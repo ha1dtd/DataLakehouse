@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoxAI - Data Catalog</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f7f9fa;
+            color: #333;
+            font-size: 13px;
+            line-height: 1.5;
+            padding-bottom: 50px;
+        }
+
+        a {
+            text-decoration: none;
+            color: #0066cc;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .global-header {
+            background-color: #1a1e24;
+            color: white;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 14px;
+        }
+
+        .header-left,
+        .header-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-logo-group {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .header-logo-group i.fa-bars {
+            font-size: 16px;
+            margin-right: 18px;
+            font-weight: 300;
+        }
+
+        .header-logo-group .oracle {
+            font-size: 16px;
+            font-weight: 700;
+            margin-right: 4px;
+            letter-spacing: 1px;
+        }
+
+        .header-logo-group .cloud {
+            font-size: 15px;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        .header-app {
+            background: #13161a;
+            border: none;
+            border-left: 1px solid #333;
+            color: #ccc;
+            margin-left: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 32px;
+            border-radius: 2px;
+        }
+
+        .header-right {
+            gap: 20px;
+            color: #eee;
+            font-size: 13px;
+        }
+
+        .header-search {
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .header-search i {
+            font-size: 14px;
+            cursor: pointer;
+            color: #aaa;
+        }
+
+        .header-region {
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ccc;
+        }
+
+        .header-icons {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .header-icons i {
+            cursor: pointer;
+        }
+
+        .breadcrumb {
+            padding: 8px 16px;
+            font-size: 12px;
+            border-bottom: 1px solid #d5d9dc;
+            background: #fff;
+            display: flex;
+            align-items: center;
+        }
+
+        .breadcrumb span {
+            color: #555;
+        }
+
+        .tabs-header-wrapper {
+            display: flex;
+            background: #fdfdfd;
+            border-bottom: 1px solid #d5d9dc;
+            padding: 0 16px;
+            gap: 4px;
+            padding-top: 4px;
+        }
+
+        .tab-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            font-size: 12px;
+            color: #333;
+            border: 1px solid transparent;
+            border-bottom: none;
+            cursor: pointer;
+            height: 34px;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .tab-item.active {
+            background: #fff;
+            font-weight: 600;
+            border: 1px solid #d5d9dc;
+            border-top: 3px solid #0066cc;
+            border-bottom: 1px solid #fff;
+            margin-bottom: -1px;
+            z-index: 10;
+        }
+
+        .tab-item:not(.active) {
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .tab-item i {
+            font-size: 13px;
+            color: #555;
+        }
+
+        .tab-item .fa-xmark {
+            font-size: 11px;
+            margin-left: 8px;
+            color: #999;
+        }
+
+        .tab-add {
+            padding: 6px 12px;
+            font-size: 15px;
+            color: #0066cc;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .tab-action {
+            margin-left: auto;
+            color: #0066cc;
+            border: 1px solid #d5d9dc;
+            background: #fff;
+            width: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 4px;
+            cursor: pointer;
+        }
+
+        .main-container {
+            background: #fff;
+            padding-bottom: 40px;
+        }
+
+        .search-container {
+            background: #fdfdfd;
+            padding: 30px 16px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            width: 100%;
+            max-width: 850px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .search-wrapper input {
+            flex: 1;
+            padding: 12px 16px;
+            padding-right: 40px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .search-wrapper input::placeholder {
+            color: #999;
+        }
+
+        .search-wrapper .fa-magnifying-glass.input-icon {
+            position: absolute;
+            right: 110px;
+            top: 14px;
+            color: #aaa;
+            font-size: 15px;
+        }
+
+        .search-wrapper button {
+            background: #0066cc;
+            color: #fff;
+            border: 1px solid #0066cc;
+            padding: 0 30px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .search-meta {
+            font-size: 12px;
+            color: #999;
+            width: 100%;
+            max-width: 850px;
+        }
+
+        .object-links {
+            padding: 16px;
+            border-bottom: 1px solid #eee;
+            background: #fff;
+            text-align: center;
+        }
+
+        .object-links-list {
+            display: inline-flex;
+            align-items: center;
+            font-size: 12px;
+            color: #d5d9dc;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .object-links-list a {
+            color: #0066cc;
+            padding: 0 16px;
+        }
+
+        .dashboard-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 280px minmax(300px, 1fr) minmax(350px, 1fr);
+            gap: 20px;
+        }
+
+        .dashboard-row {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            min-height: 220px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+        }
+
+        .card-title {
+            padding: 16px;
+            font-size: 16px;
+            color: #333;
+            font-weight: 400;
+            border-bottom: 1px solid transparent;
+        }
+
+        .card-body {
+            padding: 0 16px 16px 16px;
+        }
+
+        .learn-links {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            padding-top: 10px;
+        }
+
+        .learn-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+        }
+
+        .learn-item i {
+            font-size: 22px;
+            color: #555;
+            width: 24px;
+            text-align: center;
+            font-weight: 300;
+        }
+
+        .chart-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 10px;
+        }
+
+        .pie-chart {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            background: conic-gradient(#0066cc 0 45.45%,
+                    #b066cc 45.45% 63.63%,
+                    #f5a623 63.63% 72.72%,
+                    #e85d75 72.72% 81.81%,
+                    #7ed321 81.81% 90.9%,
+                    #003366 90.9% 100%);
+            position: relative;
+        }
+
+        .pie-lbl {
+            position: absolute;
+            font-size: 9px;
+            color: #fff;
+            font-weight: 600;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .l1 {
+            top: 50%;
+            left: 76%;
+            font-size: 10px;
+        }
+
+        .l2 {
+            top: 78%;
+            left: 55%;
+            font-size: 10px;
+        }
+
+        .l3 {
+            top: 68%;
+            left: 28%;
+            font-size: 8px;
+        }
+
+        .l4 {
+            top: 48%;
+            left: 20%;
+            font-size: 8px;
+        }
+
+        .l5 {
+            top: 28%;
+            left: 28%;
+            font-size: 8px;
+        }
+
+        .l6 {
+            top: 18%;
+            left: 48%;
+            font-size: 8px;
+        }
+
+        .chart-legend {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 16px;
+            margin-top: 24px;
+            font-size: 11px;
+            width: 100%;
+            justify-content: start;
+            padding-left: 20px;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #555;
+        }
+
+        .cspan {
+            width: 10px;
+            height: 10px;
+            flex-shrink: 0;
+        }
+
+        .c1 {
+            background: #0066cc;
+        }
+
+        .c2 {
+            background: #b066cc;
+        }
+
+        .c3 {
+            background: #f5a623;
+        }
+
+        .c4 {
+            background: #e85d75;
+        }
+
+        .c5 {
+            background: #7ed321;
+        }
+
+        .c6 {
+            background: #003366;
+        }
+
+        .word-cloud-wrapper {
+            position: relative;
+            height: 200px;
+            width: 100%;
+        }
+
+        .word-cloud-wrapper span {
+            position: absolute;
+            line-height: 1;
+        }
+
+        /* Approximate positioning for exact word cloud clone */
+        .w1 {
+            font-size: 16px;
+            top: 10%;
+            left: 25%;
+            color: #666;
+        }
+
+        /* Clickstream */
+        .w2 {
+            font-size: 11px;
+            top: 25%;
+            left: 15%;
+            color: #999;
+        }
+
+        /* Sensitive */
+        .w3 {
+            font-size: 24px;
+            top: 30%;
+            left: 25%;
+            color: #333;
+        }
+
+        /* Sales */
+        .w4 {
+            font-size: 26px;
+            top: 30%;
+            right: 15%;
+            color: #333;
+        }
+
+        /* Customer */
+        .w5 {
+            font-size: 11px;
+            top: 45%;
+            left: 10%;
+            color: #999;
+        }
+
+        /* Desc */
+        .w6 {
+            font-size: 11px;
+            top: 45%;
+            left: 25%;
+            color: #999;
+        }
+
+        /* Store */
+        .w7 {
+            font-size: 22px;
+            top: 50%;
+            left: 35%;
+            color: #333;
+        }
+
+        /* HR Data */
+        .w8 {
+            font-size: 11px;
+            top: 60%;
+            left: 5%;
+            color: #999;
+        }
+
+        /* Order */
+        .w9 {
+            font-size: 12px;
+            top: 60%;
+            left: 18%;
+            color: #999;
+        }
+
+        /* Library */
+        .w10 {
+            font-size: 20px;
+            top: 65%;
+            right: 35%;
+            color: #444;
+        }
+
+        /* Revenue */
+        .w11 {
+            font-size: 11px;
+            top: 70%;
+            left: 15%;
+            color: #999;
+        }
+
+        /* cost */
+        .w12 {
+            font-size: 12px;
+            top: 68%;
+            left: 25%;
+            color: #999;
+        }
+
+        /* School */
+        .w13 {
+            font-size: 13px;
+            top: 80%;
+            left: 8%;
+            color: #888;
+        }
+
+        /* Product */
+        .w14 {
+            font-size: 13px;
+            top: 85%;
+            left: 25%;
+            color: #888;
+        }
+
+        /* Official */
+        .w15 {
+            font-size: 20px;
+            top: 80%;
+            right: 30%;
+            color: #444;
+        }
+
+        /* Datalake */
+        .w16 {
+            font-size: 26px;
+            bottom: -5%;
+            right: 25%;
+            color: #333;
+        }
+
+        /* Marketing */
+
+        .site-footer {
+            padding: 12px 16px;
+            border-top: 1px solid #ddd;
+            background: #fff;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #999;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .site-footer a {
+            color: #0066cc;
+        }
+
+        .site-footer-left {
+            display: flex;
+            gap: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="global-header">
+        <div class="header-left">
+            <div class="header-logo-group">
+                <i class="fa-solid fa-bars"></i>
+                <span class="oracle">FoxAI</span>
+            </div>
+            <button class="header-app">Applications <i class="fa-solid fa-chevron-right"
+                    style="font-size:10px;"></i></button>
+        </div>
+        <div class="header-right">
+            <div class="header-search"><i class="fa-solid fa-magnifying-glass"></i></div>
+            <div class="header-region">VietNam <i class="fa-solid fa-chevron-down"
+                    style="font-size:10px; color: #999;"></i></div>
+            <div class="header-icons">
+                <i class="fa-regular fa-bell"></i>
+                <i class="fa-regular fa-circle-question"></i>
+                <i class="fa-regular fa-message"></i>
+                <i class="fa-solid fa-globe"></i>
+                <i class="fa-regular fa-circle-user" style="font-size:18px;"></i>
+            </div>
+        </div>
+    </header>
+
+    <div class="breadcrumb">
+        <a href="#">Data Catalog</a> <span> &gt;&gt; FOXBANK_LAKEHOUSE</span>
+    </div>
+
+    <div class="tabs-header-wrapper">
+        <div class="tab-item active">
+            <i class="fa-solid fa-house" style="color:#000;"></i> Home
+        </div>
+        <div class="tab-item">
+            <i class="fa-solid fa-database"></i> Data Assets <i class="fa-solid fa-xmark"></i>
+        </div>
+        <div class="tab-add">+</div>
+
+        <div class="tab-action"><i class="fa-solid fa-chevron-down" style="font-size:10px;"></i></div>
+    </div>
+
+    <div class="main-container">
+        <div class="search-container">
+            <div class="search-wrapper">
+                <input type="text" placeholder="Search within Data Catalog">
+                <i class="fa-solid fa-magnifying-glass input-icon"></i>
+                <button>Search</button>
+            </div>
+            <div class="search-meta">
+                Approximately 14.9K objects as of Tue, Jan 14, 2020, 07:16:09 AM UTC
+            </div>
+        </div>
+
+        <div class="object-links">
+            <div class="object-links-list">
+                <a href="#">Data Assets (11)</a> |
+                <a href="#">Data Entities (2290)</a> |
+                <a href="#">Attributes (12588)</a> |
+                <a href="DATA GOVERNANCE (Glossary).html">Glossaries (3)</a> |
+                <a href="#">Terms (85)</a> |
+                <a href="#">Jobs (27)</a> |
+                <a href="#">Schedules (1)</a>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-title">Learn</div>
+                <div class="card-body">
+                    <div class="learn-links">
+                        <div class="learn-item">
+                            <i class="fa-regular fa-circle-play"></i> <a href="#">Data Catalog Overview</a>
+                        </div>
+                        <div class="learn-item">
+                            <i class="fa-regular fa-circle-play"></i> <a href="#">Product Tour</a>
+                        </div>
+                        <div class="learn-item">
+                            <i class="fa-regular fa-file-pdf"></i> <a href="#">User Guide</a>
+                        </div>
+                        <div class="learn-item">
+                            <i class="fa-solid fa-list-ul"></i> <a href="#">Rest API</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Data Assets by Type</div>
+                <div class="card-body">
+                    <div class="chart-box">
+                        <div class="pie-chart">
+                            <div class="pie-lbl l1">45.45%</div>
+                            <div class="pie-lbl l2">18.18%</div>
+                            <div class="pie-lbl l3">9.0...</div>
+                            <div class="pie-lbl l4">9.090%</div>
+                            <div class="pie-lbl l5">9.090%</div>
+                            <div class="pie-lbl l6">9.0...</div>
+                        </div>
+                        <div class="chart-legend">
+                            <div class="legend-row">
+                                <div class="cspan c1"></div> FoxAI DB (5)
+                            </div>
+                            <div class="legend-row">
+                                <div class="cspan c4"></div> MySQL (1)
+                            </div>
+                            <div class="legend-row">
+                                <div class="cspan c2"></div> MinIO S3 (2)
+                            </div>
+                            <div class="legend-row">
+                                <div class="cspan c5"></div> Kafka (1)
+                            </div>
+                            <div class="legend-row">
+                                <div class="cspan c3"></div> Hive (1)
+                            </div>
+                            <div class="legend-row">
+                                <div class="cspan c6"></div> ATP (1)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Popular Catalog Tags</div>
+                <div class="card-body">
+                    <div class="word-cloud-wrapper">
+                        <span class="w1">Clickstream</span>
+                        <span class="w2">Sensitive</span>
+                        <span class="w3">Sales</span>
+                        <span class="w4">Customer</span>
+                        <span class="w5">Desc</span>
+                        <span class="w6">Store</span>
+                        <span class="w7">HR Data</span>
+                        <span class="w8">Order</span>
+                        <span class="w9">Library</span>
+                        <span class="w10">Revenue</span>
+                        <span class="w11">cost</span>
+                        <span class="w12">School</span>
+                        <span class="w13">Product</span>
+                        <span class="w14">Official</span>
+                        <span class="w15">Datalake</span>
+                        <span class="w16">Marketing</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-row">
+                <div class="card" style="min-height: 120px;">
+                    <div class="card-title">Quick Actions</div>
+                </div>
+                <div class="card" style="min-height: 120px;">
+                    <div class="card-title">Recently Updated</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="site-footer-left">
+            <a href="#">Terms of Use and Privacy</a>
+            <a href="#">Cookie Preferences</a>
+        </div>
+        <div>
+            Copyright &copy; 2020, FoxAI and/or its affiliates. All rights reserved.
+        </div>
+    </footer>
+</body>
+
+</html>

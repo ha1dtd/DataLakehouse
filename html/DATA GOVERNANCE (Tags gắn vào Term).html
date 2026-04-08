@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DATA GOVERNANCE (Tags gắn vào Term)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --modal-border: #d5d9dc;
+            --text-main: #333;
+            --text-muted: #666;
+            --oracle-blue: #0066cc;
+            --bg-light: #f7f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #fff;
+            /* Changed to white as requested */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding-top: 100px;
+            overflow-x: hidden;
+            box-sizing: border-box;
+        }
+
+        .foxai-top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: #1a1e24;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+        }
+
+        .header-logo-group {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .header-logo-group i.fa-bars {
+            font-size: 16px;
+            margin-right: 18px;
+            font-weight: 300;
+            color: #fff;
+        }
+
+        .header-logo-group .oracle {
+            font-size: 16px;
+            font-weight: 700;
+            margin-right: 4px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        /* --- Centering Wrapper --- */
+        .modal-container {
+            position: relative;
+            width: 900px;
+            /* Base width to hold both overlapping modals */
+        }
+
+        /* --- Background Modal: Link Term --- */
+        .modal-background {
+            width: 700px;
+            background: white;
+            border: 1px solid var(--modal-border);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+            position: relative;
+        }
+
+        .modal-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            font-weight: 400;
+            color: #333;
+        }
+
+        .close-icon {
+            font-size: 18px;
+            color: #999;
+            cursor: pointer;
+        }
+
+        .search-row {
+            padding: 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+            width: 220px;
+        }
+
+        .search-box input {
+            width: 100%;
+            height: 30px;
+            padding: 0 28px 0 10px;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .search-box .inner-x {
+            position: absolute;
+            right: 8px;
+            top: 7px;
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        .search-btn {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .term-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .term-table th {
+            text-align: left;
+            padding: 10px 16px;
+            border-bottom: 1px solid #eee;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .term-table td {
+            padding: 8px 16px;
+            border-bottom: 1px solid #f9f9f9;
+            color: #333;
+        }
+
+        .term-table tr:hover {
+            background-color: #f5f8fa;
+        }
+
+        .checkbox-cell {
+            width: 40px;
+            text-align: center;
+        }
+
+        .checkbox-mock {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        /* --- Foreground Modal: Tags --- */
+        .modal-foreground {
+            width: 550px;
+            background: white;
+            border: 1px solid var(--modal-border);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            position: absolute;
+            top: 130px;
+            left: 350px;
+            /* Calculated offset to match Image 1 exactly */
+        }
+
+        .tags-content {
+            padding: 24px;
+        }
+
+        .tags-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .tags-description {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .tags-label {
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .tags-label em {
+            color: #888;
+            font-weight: normal;
+            font-style: italic;
+            margin-left: 4px;
+        }
+
+        .tags-input-container {
+            border: 1px solid #0066cc;
+            padding: 4px 8px;
+            min-height: 38px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            border-bottom: none;
+        }
+
+        .tag-pill {
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            padding: 2px 8px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #333;
+        }
+
+        .tag-pill .remove-tag {
+            color: #666;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .cursor-pipe {
+            width: 1px;
+            height: 18px;
+            background: #000;
+            margin-left: 4px;
+        }
+
+        /* Dropdown list */
+        .tags-dropdown {
+            border: 1px solid #ccc;
+            border-top: none;
+            max-height: 250px;
+            overflow-y: auto;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .dropdown-info {
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #666;
+            background: #fdfdfd;
+            border-bottom: 1px solid #eee;
+        }
+
+        .dropdown-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            background-color: #f0f7ff;
+            color: var(--oracle-blue);
+        }
+
+        a.dropdown-item {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        a.dropdown-item:hover {
+            color: var(--oracle-blue);
+        }
+
+        /* Custom Scrollbar for Dropdown */
+        .tags-dropdown::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .tags-dropdown::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .tags-dropdown::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+
+        .tags-dropdown::-webkit-scrollbar-thumb:hover {
+            background: #bbb;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="foxai-top-bar">
+        <div class="header-logo-group">
+            <i class="fa-solid fa-bars"></i>
+            <span class="oracle">FoxAI</span>
+        </div>
+    </header>
+
+    <div class="modal-container">
+        <!-- Link Term Modal (Background) -->
+        <div class="modal-background">
+            <div class="modal-header">
+                <h2>Link Term</h2>
+                <i class="fa-solid fa-xmark close-icon"></i>
+            </div>
+
+            <div class="search-row">
+                <div class="search-box">
+                    <input type="text" value="Search by term name">
+                    <i class="fa-solid fa-xmark inner-x"></i>
+                </div>
+                <div class="search-btn">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </div>
+            </div>
+
+            <table class="term-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-cell"></th>
+                        <th>Name</th>
+                        <th>Glossary</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Account Manager ID</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Address Line</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>City</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Customer</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Date of Birth</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Family Name</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                    <tr>
+                        <td class="checkbox-cell">
+                            <div class="checkbox-mock"></div>
+                        </td>
+                        <td>Gender</td>
+                        <td>Core Banking Domain</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tags Modal (Foreground) -->
+        <div class="modal-foreground">
+            <div class="tags-content">
+                <div class="tags-title">Tags</div>
+                <p class="tags-description">
+                    Tags let you flag objects in the data catalog with a free-form text identifier. You can then quickly
+                    find objects by entering the tag name in the search fields. Select existing tags or enter new tags.
+                </p>
+
+                <span class="tags-label">Tags <em>optional</em></span>
+
+                <div class="tags-input-container">
+                    <div class="tag-pill">
+                        Sensitive <i class="fa-solid fa-xmark remove-tag"></i>
+                    </div>
+                    <div class="cursor-pipe"></div>
+                </div>
+
+                <div class="tags-dropdown">
+                    <div class="dropdown-info">More results available, please filter further.</div>
+                    <div class="dropdown-item">HR Data</div>
+                    <div class="dropdown-item">Sales</div>
+                    <div class="dropdown-item">Revenue</div>
+                    <a href="DATA CATALOG - Tích hợp nhiều nguồn dữ liệu.html" class="dropdown-item">Customer</a>
+                    <div class="dropdown-item">Datalake</div>
+                    <div class="dropdown-item">School</div>
+                    <div class="dropdown-item">Library</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

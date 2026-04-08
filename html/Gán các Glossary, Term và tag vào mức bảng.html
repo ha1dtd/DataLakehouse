@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoxAI - Logical Entity: customer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --header-bg: #1a1e24;
+            --oracle-blue: #0066cc;
+            --oracle-red: #d93025;
+            --text-main: #333;
+            --text-muted: #666;
+            --border-color: #d5d9dc;
+            --bg-light: #f7f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #fff;
+            color: var(--text-main);
+            font-size: 13px;
+        }
+
+        /* --- Global Header --- */
+        header.global-header {
+            background-color: var(--header-bg);
+            color: white;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+        }
+
+        .header-left,
+        .header-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-logo-group {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-right: 80px;
+        }
+
+        .header-logo-group i.fa-bars {
+            font-size: 16px;
+            margin-right: 18px;
+            font-weight: 300;
+        }
+
+        .header-logo-group .oracle {
+            font-size: 16px;
+            font-weight: 700;
+            margin-right: 4px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        .header-search {
+            background-color: #1a1c1e;
+            border: 1px solid #444;
+            display: flex;
+            align-items: center;
+            width: 450px;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 3px;
+        }
+
+        .header-search input {
+            background: transparent;
+            border: none;
+            color: white;
+            flex: 1;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .region-select {
+            font-size: 13px;
+            color: #e0e0e0;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+
+        .user-avatar {
+            width: 24px;
+            height: 24px;
+            background: #6c4e72;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        /* --- Breadcrumb --- */
+        .breadcrumb-bar {
+            padding: 10px 20px;
+            font-size: 12px;
+            color: var(--oracle-blue);
+            background: #fff;
+        }
+
+        /* --- Title & Toolbar --- */
+        .title-strip {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+        }
+
+        .entity-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 400;
+        }
+
+        .toolbar-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            height: 28px;
+            padding: 0 14px;
+            font-size: 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        .btn-red {
+            background-color: var(--oracle-red);
+            color: white;
+            border: none;
+        }
+
+        /* --- Tabs --- */
+        .tab-nav {
+            display: flex;
+            padding: 0 20px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .tab-item {
+            padding: 8px 0;
+            margin-right: 32px;
+            cursor: pointer;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab-item.active {
+            color: var(--oracle-blue);
+            font-weight: 600;
+            border-bottom: 2px solid var(--oracle-blue);
+        }
+
+        a.tab-item {
+            text-decoration: none;
+            color: #666;
+        }
+
+        /* --- Collapsible Content Sections --- */
+        .section-container {
+            padding: 12px 20px;
+        }
+
+        .collapsible-header {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 12px;
+        }
+
+        .collapsible-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .collapsible-header i {
+            font-size: 10px;
+            margin-right: 10px;
+            color: #555;
+        }
+
+        /* Harvested Properties Grid */
+        .props-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px 40px;
+            margin-bottom: 24px;
+        }
+
+        .prop-item {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .prop-item b {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .prop-item span.link {
+            color: var(--oracle-blue);
+            word-break: break-all;
+        }
+
+        /* Tags Area */
+        .tags-wrapper {
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            min-height: 32px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tag-pill {
+            background: #eee;
+            border: 1px solid #ddd;
+            padding: 2px 8px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        /* Table Style */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .data-table th {
+            text-align: left;
+            background: #fafafa;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            font-weight: 600;
+        }
+
+        .data-table td {
+            padding: 10px;
+            border-bottom: 1px solid #f2f2f2;
+            vertical-align: top;
+        }
+
+        .link-text {
+            color: var(--oracle-blue);
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        /* Recommendations Cards */
+        .recom-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .recom-card {
+            border: 1px solid #d5d9dc;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .recom-title {
+            font-weight: 600;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 6px;
+        }
+
+        .recom-title a {
+            color: var(--oracle-blue);
+            text-decoration: underline;
+        }
+
+        .recom-path {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .recom-status {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #0066cc;
+            border-radius: 50%;
+        }
+
+        .recom-desc {
+            font-size: 12px;
+            color: #333;
+            flex: 1;
+        }
+
+        .recom-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-small {
+            height: 24px;
+            padding: 0 10px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="global-header">
+        <div class="header-left">
+            <div class="header-logo-group">
+                <i class="fa-solid fa-bars"></i>
+                <span class="oracle">FoxAI</span>
+            </div>
+            <div class="header-search">
+                <i class="fa-solid fa-magnifying-glass" style="color:#aaa; font-size:12px; margin-right:10px"></i>
+                <input type="text" placeholder="Search resources, services, documentation, and Marketplace">
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="region-select">VietNam <i class="fa-solid fa-chevron-down" style="font-size:10px"></i></div>
+            <i class="fa-solid fa-desktop" style="margin-right:20px; color:#ccc"></i>
+            <i class="fa-regular fa-bell" style="margin-right:20px; color:#ccc"></i>
+            <i class="fa-solid fa-circle-question" style="margin-right:20px; color:#ccc"></i>
+            <div class="user-avatar">M</div>
+        </div>
+    </header>
+
+    <div class="breadcrumb-bar">
+        Data Catalog <span style="color:#999">></span> foxbank-lakehouse
+    </div>
+
+    <div class="title-strip">
+        <div class="entity-title">
+            <i class="fa-solid fa-cube" style="color:#333"></i>
+            <span>Logical Entity customer_master</span>
+            <i class="fa-solid fa-pen" style="font-size:14px; color:#999; cursor:pointer"></i>
+        </div>
+        <div class="toolbar-btns">
+            <button class="btn">Refresh</button>
+            <button class="btn">Export custom properties</button>
+            <button class="btn">Import custom properties</button>
+            <button class="btn btn-red">Delete</button>
+        </div>
+    </div>
+
+    <div class="tab-nav">
+        <div class="tab-item active">Summary</div>
+        <a href="Gán các Glossary, Term và tag vào mức cột.html" class="tab-item">Attributes</a>
+        <div class="tab-item">Lineage</div>
+        <div class="tab-item">Files</div>
+    </div>
+
+    <div class="section-container">
+        <!-- Harvested Properties -->
+        <div class="collapsible-header">
+            <i class="fa-solid fa-caret-down"></i>
+            <h3>Harvested Properties</h3>
+            <span style="font-size:12px; color:var(--oracle-blue)">Edit</span>
+        </div>
+        <div class="props-grid">
+            <div class="prop-item">
+                <p><b>Path:</b> <span class="link">Core Banking Lake / core_banking_curated</span></p>
+                <p><b>Number of attributes:</b> 37</p>
+                <p><b>Data asset type:</b> Oracle Object Storage</p>
+                <p><b>Filename pattern:</b> folderLE</p>
+                <p><b>File type:</b> CSV</p>
+                <p><b>Record delimiter:</b> Newline (\n)</p>
+                <p><b>Number of header rows to skip:</b> 0</p>
+                <p><b>Last updated:</b> Dec 10, 2025, 9:42:38 AM UTC</p>
+                <p><b>Updated by:</b> Name unavailable</p>
+            </div>
+            <div class="prop-item">
+                <p><b>Type:</b> Data entity</p>
+                <p><b>Bucket URL:</b> <span
+                        class="link">https://console.us-ashburn-1.oraclecloud.com/object-storage/buckets/n/fru04/core_banking_curated/objects
+                        Show</span></p>
+                <p><b>Number of files:</b> 1</p>
+                <p><b>Character set:</b> UTF8</p>
+                <p><b>Field delimiter:</b> Comma (,)</p>
+                <p><b>Quote character:</b> "</p>
+                <p><b>Last harvested:</b> Dec 10, 2025, 9:14:11 AM UTC</p>
+            </div>
+            <div class="prop-item">
+                <p><b>Bucket:</b> core_banking_curated</p>
+                <p><b>Status:</b> Active</p>
+                <p><b>Compression:</b> none</p>
+                <p><b>Has column headers:</b> true</p>
+                <p><b>Escape character:</b> true</p>
+                <p><b>Last updated in source:</b> -</p>
+            </div>
+        </div>
+
+        <!-- Custom Properties -->
+        <div class="collapsible-header">
+            <i class="fa-solid fa-caret-down"></i>
+            <h3>Custom Properties</h3>
+        </div>
+        <div style="font-size:12px; color:#666; margin-bottom: 24px;">
+            No custom properties available. Start by creating custom properties.
+        </div>
+
+        <!-- Tags -->
+        <div class="collapsible-header">
+            <i class="fa-solid fa-caret-down"></i>
+            <h3>Tags</h3>
+        </div>
+        <div style="margin-bottom: 24px;">
+            <p style="font-size:11px; font-weight:600; margin-bottom:6px">Tags <span
+                    style="font-weight:400; color:#888">OPTIONAL</span> <i class="fa-solid fa-circle-info"
+                    style="font-size:10px; color:#888"></i></p>
+            <div class="tags-wrapper">
+                <div class="tag-pill">Sensitive <span style="cursor:pointer">×</span></div>
+            </div>
+            <p style="font-size:11px; color:#888; margin-top:6px">Select existing tags or enter new tags.</p>
+        </div>
+
+        <!-- Business Glossary -->
+        <div class="collapsible-header">
+            <i class="fa-solid fa-caret-down"></i>
+            <h3>Business glossary terms and categories <i class="fa-solid fa-circle-info"
+                    style="font-size:10px; color:#888; margin-left:6px"></i></h3>
+        </div>
+        <div style="margin-bottom: 24px;">
+            <button class="btn" style="margin-bottom:10px">Link terms and categories</button>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width:30%">Name</th>
+                        <th style="width:40%">Path</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="link-text">Individual Customer</span></td>
+                        <td>Banking Business Glossary/Customer Management</td>
+                        <td>Khách hàng thuộc nhóm cá nhân.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="link-text">Customer Management</span></td>
+                        <td>Banking Business Glossary</td>
+                        <td>Quản lý khách hàng, thông tin định danh, KYC và vòng đời khách hàng.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="link-text">Customer</span></td>
+                        <td>Banking Business Glossary/Customer Management</td>
+                        <td>Khách hàng có quan hệ với ngân hàng.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="collapsible-header">
+            <i class="fa-solid fa-caret-down"></i>
+            <h3>Recommendations (4) <i class="fa-solid fa-circle-info"
+                    style="font-size:10px; color:#888; margin-left:6px"></i></h3>
+        </div>
+        <div class="recom-grid">
+            <!-- Card 1 -->
+            <div class="recom-card">
+                <div class="recom-title"><i class="fa-solid fa-cube" style="font-size:12px"></i> <a href="#">Customer
+                        Type</a></div>
+                <div class="recom-path">Path: Banking Business Glossary/Cus...</div>
+                <div class="recom-status"><span class="status-dot"></span> Status : New</div>
+                <div class="recom-desc">Phân loại khách hàng theo tiêu chí... <span
+                        style="color:var(--oracle-blue); cursor:pointer">Show</span></div>
+                <div class="recom-actions">
+                    <button class="btn btn-small">Accept</button>
+                    <button class="btn btn-small">Reject</button>
+                </div>
+            </div>
+            <!-- Card 2 -->
+            <div class="recom-card">
+                <div class="recom-title"><i class="fa-solid fa-cube" style="font-size:12px"></i> <a href="#">Corporate
+                        Customer</a></div>
+                <div class="recom-path">Path: Banking Business Glossary/Cus...</div>
+                <div class="recom-status"><span class="status-dot"></span> Status : New</div>
+                <div class="recom-desc">Khách hàng doanh nghiệp... <span
+                        style="color:var(--oracle-blue); cursor:pointer">Show</span></div>
+                <div class="recom-actions">
+                    <button class="btn btn-small">Accept</button>
+                    <button class="btn btn-small">Reject</button>
+                </div>
+            </div>
+            <!-- Card 3 -->
+            <div class="recom-card">
+                <div class="recom-title"><i class="fa-solid fa-cube" style="font-size:12px"></i> <a href="#">Customer
+                        Full Legal Name</a></div>
+                <div class="recom-path">Path: Banking Business Glossary/Cus...</div>
+                <div class="recom-status"><span class="status-dot"></span> Status : New</div>
+                <div class="recom-desc">Là tên chính thức của khách hàng... <span
+                        style="color:var(--oracle-blue); cursor:pointer">Show</span></div>
+                <div class="recom-actions">
+                    <button class="btn btn-small">Accept</button>
+                    <button class="btn btn-small">Reject</button>
+                </div>
+            </div>
+            <!-- Card 4 -->
+            <div class="recom-card">
+                <div class="recom-title"><i class="fa-solid fa-cube" style="font-size:12px"></i> <a href="#">Customer
+                        Identifier (CIF)</a></div>
+                <div class="recom-path">Path: Banking Business Glossary/Cus...</div>
+                <div class="recom-status"><span class="status-dot"></span> Status : New</div>
+                <div class="recom-desc">Mã định danh duy nhất của khách ... <span
+                        style="color:var(--oracle-blue); cursor:pointer">Show</span></div>
+                <div class="recom-actions">
+                    <button class="btn btn-small">Accept</button>
+                    <button class="btn btn-small">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer
+        style="margin-top: 40px; padding: 20px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; font-size: 11px; color:#999">
+        <div>Copyright © 2025, Oracle and/or its affiliates. All rights reserved.</div>
+        <div style="display:flex; gap: 10px;">
+            <span>US West (VietNam)</span> | <span>Redwood preview</span>
+        </div>
+    </footer>
+
+</body>
+
+</html>

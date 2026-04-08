@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DATA CATALOG - Tích hợp nhiều nguồn dữ liệu (Refined)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --oracle-blue: #0066cc;
+            --text-main: #333;
+            --text-light: #666;
+            --border-color: #d5d9dc;
+            --bg-page: #f0f2f5;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-sizing: border-box;
+            padding-top: 50px;
+        }
+
+        .foxai-top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: #1a1e24;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+        }
+
+        .header-logo-group {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .header-logo-group i.fa-bars {
+            font-size: 16px;
+            margin-right: 18px;
+            font-weight: 300;
+            color: #fff;
+        }
+
+        .header-logo-group .oracle {
+            font-size: 16px;
+            font-weight: 700;
+            margin-right: 4px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        .screen-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- CLOUD HEADER STRIP (Visual Anchor) --- */
+        .header-top {
+            background: #fff;
+            height: 50px;
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* --- LAYER 1: DATA ASSETS (BOTTOM) --- */
+        .layer-data-assets {
+            position: absolute;
+            top: 20px;
+            left: 5%;
+            width: 90%;
+            background: white;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            z-index: 1;
+        }
+
+        .table-toolbar {
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .btn-blue {
+            background: var(--oracle-blue);
+            color: white;
+            padding: 6px 16px;
+            border: none;
+            border-radius: 2px;
+            font-size: 13px;
+        }
+
+        .search-box {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-box input {
+            width: 100%;
+            height: 32px;
+            padding: 0 35px 0 10px;
+            border: 1px solid #ccc;
+            font-style: italic;
+            font-size: 13px;
+        }
+
+        .search-box i {
+            position: absolute;
+            right: 12px;
+            top: 9px;
+            color: #999;
+        }
+
+        .main-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .main-table th {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid #ddd;
+            font-weight: 600;
+            color: #000;
+            background: white;
+        }
+
+        .main-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f2f2f2;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .ellipsis-cell {
+            text-align: right;
+            padding-right: 20px !important;
+            font-size: 16px;
+            color: #555;
+        }
+
+        /* --- LAYER 2: SELECT ENTITIES (MIDDLE) --- */
+        .layer-wizard {
+            position: absolute;
+            top: 60px;
+            left: 45%;
+            width: 52%;
+            background: white;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+            z-index: 10;
+        }
+
+        .wizard-stepper {
+            padding: 20px 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            position: relative;
+        }
+
+        .stepper-line {
+            position: absolute;
+            top: 32px;
+            left: 100px;
+            right: 100px;
+            height: 1px;
+            background: #eee;
+        }
+
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: #999;
+            z-index: 2;
+        }
+
+        .step-circle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid #ccc;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+        }
+
+        .step-item.active {
+            color: #000;
+        }
+
+        .step-item.active .step-circle {
+            background: var(--oracle-blue);
+            color: #fff;
+            border-color: var(--oracle-blue);
+        }
+
+        .step-item.completed {
+            color: var(--oracle-blue);
+        }
+
+        .step-item.completed .step-circle {
+            color: var(--oracle-blue);
+            border-color: var(--oracle-blue);
+        }
+
+        .wizard-body {
+            display: flex;
+            padding: 20px;
+            gap: 30px;
+        }
+
+        .panel {
+            flex: 1;
+        }
+
+        .panel-title {
+            color: #777;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .control-row input {
+            flex: 1;
+            padding: 5px 8px;
+            border: 1px solid #ccc;
+            font-style: italic;
+            font-size: 12px;
+        }
+
+        .btn-grey {
+            background: #f1f1f1;
+            border: 1px solid #ccc;
+            padding: 4px 12px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .tree-container {
+            border: 1px solid #eee;
+            height: 180px;
+            overflow-y: auto;
+        }
+
+        .tree-item {
+            padding: 6px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .tree-item.selected {
+            background-color: #eef7ff;
+            color: var(--oracle-blue);
+            font-weight: 500;
+        }
+
+        /* --- LAYER 3: JOB SUMMARY (TOP) --- */
+        .layer-job-summary {
+            position: absolute;
+            bottom: 30px;
+            left: 20%;
+            width: 60%;
+            background: white;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+            z-index: 20;
+        }
+
+        .job-title {
+            padding: 15px 25px;
+            font-size: 20px;
+            font-weight: 400;
+            color: #555;
+        }
+
+        .job-tabs {
+            display: flex;
+            padding: 0 25px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .job-tab {
+            padding: 10px 0;
+            margin-right: 30px;
+            font-size: 14px;
+            color: #888;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .job-tab.active {
+            color: var(--oracle-blue);
+            border-bottom-color: var(--oracle-blue);
+            font-weight: 600;
+        }
+
+        .job-tab.inactive-label {
+            background: #f3f3f3;
+            padding: 10px 15px;
+            color: #999;
+        }
+
+        .job-body {
+            padding: 25px;
+        }
+
+        .status-header-box {
+            background: #fcfcfc;
+            border: 1px solid #f0f0f0;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+        }
+
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .green-dot {
+            width: 10px;
+            height: 10px;
+            background: #27ae60;
+            border-radius: 50%;
+        }
+
+        .metadata-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .kpi-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        .kpi-box {
+            border: 1px solid #f0f0f0;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .kpi-num {
+            font-size: 48px;
+            font-weight: 300;
+            color: #000;
+            margin-bottom: 10px;
+        }
+
+        .kpi-txt {
+            font-size: 11px;
+            color: #888;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+
+        a.kpi-box-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        a.kpi-box-link:hover .kpi-box {
+            border-color: var(--oracle-blue);
+            background: #fafcff;
+        }
+
+        a.asset-name-link {
+            color: var(--oracle-blue);
+            text-decoration: none;
+        }
+
+        a.asset-name-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Specific Fixes to match Image 1 exactly */
+        .selected-table th {
+            background: #f9f9f9;
+            font-size: 11px;
+            color: #777;
+            font-weight: 400;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .selected-table td {
+            font-size: 11px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="foxai-top-bar">
+        <div class="header-logo-group">
+            <i class="fa-solid fa-bars"></i>
+            <span class="oracle">FoxAI</span>
+        </div>
+    </header>
+
+    <div class="screen-container">
+
+        <!-- LAYER 1: BOTTOM (Data Assets) -->
+        <div class="layer-data-assets">
+            <div class="table-toolbar">
+                <button class="btn-blue">Create Data Asset</button>
+                <div class="search-box">
+                    <input type="text" placeholder="Search within results">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </div>
+            </div>
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" style="opacity: 0.2"></th>
+                        <th style="width: 60px;">Type</th>
+                        <th style="width: 250px;">Name</th>
+                        <th>Owner</th>
+                        <th>Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td><a href="Khi harvest xong thì sẽ xuất hiện Data assets.html" class="asset-name-link">corebank_oracle_asset</a></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">Customer360_DB</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">RiskData_Hive</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">Kafka_CoreBanking</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">lastname_oradb...</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">LoanPortfolio_DB</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td><input type="checkbox" style="opacity: 0.2"></td>
+                        <td><i class="fa-solid fa-layer-group" style="color:#aaa"></i></td>
+                        <td style="color: var(--oracle-blue)">objstore_corelake...</td>
+                        <td></td>
+                        <td class="ellipsis-cell"><i class="fa-solid fa-ellipsis-vertical"></i></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- LAYER 2: MIDDLE (Entity Wizard) -->
+        <div class="layer-wizard">
+            <div class="wizard-stepper">
+                <div class="stepper-line"></div>
+                <div class="step-item completed">
+                    <div class="step-circle"><i class="fa-solid fa-check"></i></div>
+                    Select Connection
+                </div>
+                <div class="step-item active">
+                    <div class="step-circle">2</div>
+                    Select Entities
+                </div>
+                <div class="step-item">
+                    <div class="step-circle">3</div>
+                    Create Job
+                </div>
+            </div>
+
+            <div class="wizard-body">
+                <div class="panel">
+                    <div class="panel-title">Available Data Entities</div>
+                    <div class="control-row">
+                        <input type="text" placeholder="Filter Folders">
+                        <i class="fa-solid fa-magnifying-glass"
+                            style="margin-left:-25px; margin-top:8px; color:#999; font-size:12px;"></i>
+                        <button class="btn-grey" style="margin-left: 15px;">Add All</button>
+                    </div>
+                    <div class="tree-container">
+                        <div class="tree-item selected">
+                            <span><i class="fa-solid fa-caret-right"></i> ALPHA</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="tree-item">
+                            <span><i class="fa-solid fa-caret-right"></i> ANONYMOUS</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="tree-item">
+                            <span><i class="fa-solid fa-caret-right"></i> APPQOSSYS</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <div class="tree-item">
+                            <span><i class="fa-solid fa-caret-right"></i> CTXSYS</span>
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">Selected Data Entities</div>
+                    <div class="control-row">
+                        <input type="text" placeholder="Filter Selected">
+                        <i class="fa-solid fa-magnifying-glass"
+                            style="margin-left:-25px; margin-top:8px; color:#999; font-size:12px;"></i>
+                        <button class="btn-grey" style="margin-left: 15px;">Remove All</button>
+                    </div>
+                    <table class="main-table selected-table">
+                        <thead>
+                            <tr>
+                                <th>Folder</th>
+                                <th>Folder Type</th>
+                                <th>Data Entity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>ALPHA</td>
+                                <td>ORACLE SCHEMA</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- LAYER 3: TOP (Job Summary) -->
+        <div class="layer-job-summary">
+            <div class="job-title">Job : corebanking_harvest - 10-Sep-2019 23:21:21</div>
+            <div class="job-tabs">
+                <div class="job-tab active">Summary</div>
+                <div class="job-tab inactive-label">Log Messages</div>
+                <div class="job-tab">Schedule</div>
+            </div>
+            <div class="job-body">
+                <div class="status-header-box">
+                    <div class="status-line">
+                        Status : <span class="green-dot"></span> <span style="font-weight: 600;">Succeeded</span>
+                    </div>
+                    <div class="metadata-row">
+                        <span>Created : 10-Sep-2019 23:21:11</span>
+                        <span>Started : 10-Sep-2019 23:21:21</span>
+                        <span>Ended : 10-Sep-2019 23:21:22</span>
+                    </div>
+                </div>
+
+                <div class="kpi-container">
+                    <a href="Khi harvest xong thì sẽ xuất hiện Data assets.html" class="kpi-box-link" title="Xem Data assets sau harvest">
+                    <div class="kpi-box">
+                        <div class="kpi-num">32</div>
+                        <div class="kpi-txt">ENTITIES HARVESTED</div>
+                    </div>
+                    </a>
+                    <div class="kpi-box">
+                        <div class="kpi-num">1</div>
+                        <div class="kpi-txt">ELAPSED SECS</div>
+                    </div>
+                    <div class="kpi-box">
+                        <div class="kpi-num">1</div>
+                        <div class="kpi-txt">FOLDERS HARVESTED</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+
+</html>

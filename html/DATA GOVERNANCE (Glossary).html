@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle Cloud - Glossaries</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --header-bg: #1a1e24;
+            --brand-color: #f7f9fa;
+            --oracle-blue: #0066cc;
+            --text-main: #333;
+            --text-muted: #595959;
+            --border-color: #d5d9dc;
+            --bg-light: #f7f9fa;
+            --sidebar-width: 260px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            font-size: 13px;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* --- Header --- */
+        .global-header {
+            background-color: var(--header-bg);
+            color: white;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+        }
+
+        .header-left,
+        .header-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-logo-group {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-right: 20px;
+        }
+
+        .header-logo-group i.fa-bars {
+            font-size: 16px;
+            margin-right: 18px;
+            font-weight: 300;
+        }
+
+        .header-logo-group .oracle {
+            font-size: 16px;
+            font-weight: 700;
+            margin-right: 4px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        .header-search {
+            background-color: #1a1c1e;
+            border: 1px solid #444;
+            display: flex;
+            align-items: center;
+            width: 480px;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 3px;
+            margin-left: 100px;
+        }
+
+        .header-search i {
+            color: #aaa;
+            margin-right: 10px;
+            font-size: 12px;
+        }
+
+        .header-search input {
+            background: transparent;
+            border: none;
+            color: white;
+            flex: 1;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .header-search input::placeholder {
+            color: #ccc;
+        }
+
+        .header-right {
+            gap: 20px;
+        }
+
+        .region-select {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: #e0e0e0;
+        }
+
+        .header-icons {
+            display: flex;
+            gap: 16px;
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .header-icons i {
+            cursor: pointer;
+            opacity: 0.8;
+        }
+
+        .user-avatar {
+            width: 24px;
+            height: 24px;
+            background: #6c4e72;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+        }
+
+        /* --- Breadcrumb --- */
+        .breadcrumb {
+            background: #fff;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11px;
+            color: var(--oracle-blue);
+        }
+
+        .breadcrumb .divider {
+            color: #999;
+            margin: 0 8px;
+            font-size: 10px;
+        }
+
+        .breadcrumb .current {
+            color: #333;
+        }
+
+        /* --- Tabs --- */
+        .tabs-bar {
+            background: #fdfdfd;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: flex-end;
+            padding-left: 8px;
+            height: 42px;
+        }
+
+        .tab {
+            padding: 6px 14px;
+            font-size: 12px;
+            color: var(--oracle-blue);
+            cursor: pointer;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 34px;
+            margin-bottom: -1px;
+            background: #fdfdfd;
+        }
+
+        .tab i {
+            font-size: 13px;
+        }
+
+        .tab.active {
+            background: white;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-bottom: 2px solid white;
+            border-top: 3px solid var(--oracle-blue);
+            font-weight: 500;
+            z-index: 10;
+        }
+
+        .tab-close {
+            font-size: 11px;
+            color: var(--oracle-blue);
+            margin-left: 8px;
+        }
+
+        .tab-plus {
+            padding: 8px 12px;
+            color: var(--oracle-blue);
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .tab-overflow {
+            margin-left: auto;
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #555;
+        }
+
+        /* --- Main Wrapper --- */
+        .main-wrapper {
+            display: flex;
+            flex: 1;
+            background-color: white;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            border-right: 1px solid var(--border-color);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar h2 {
+            font-size: 15px;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar h2 a {
+            color: var(--oracle-blue);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        .filter-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .filter-label i {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .sidebar input {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            font-size: 12px;
+            color: #666;
+            outline: none;
+            background: #fff;
+        }
+
+        .date-input {
+            position: relative;
+        }
+
+        .date-input i {
+            position: absolute;
+            right: 8px;
+            top: 7px;
+            color: #777;
+            font-size: 12px;
+        }
+
+        /* Content Area */
+        .content-area {
+            flex: 1;
+            padding: 20px 32px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 400;
+            margin-bottom: 4px;
+        }
+
+        .last-update-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 24px;
+        }
+
+        .action-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .btn {
+            height: 32px;
+            padding: 0 16px;
+            font-size: 13px;
+            border-radius: 2px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #333;
+        }
+
+        .btn-black {
+            background-color: #3e3e3e;
+            color: white;
+            border: none;
+        }
+
+        .search-inner {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-inner input {
+            width: 100%;
+            height: 32px;
+            padding: 0 12px;
+            padding-right: 30px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .search-inner i {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            color: #999;
+            font-size: 12px;
+        }
+
+        .relevance-dropdown {
+            width: 140px;
+            height: 32px;
+            border: 1px solid #ccc;
+            padding: 0 10px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-radius: 2px;
+        }
+
+        /* Glossary List */
+        .glossary-list {
+            border: 1px solid var(--border-color);
+        }
+
+        .glossary-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 16px;
+            position: relative;
+        }
+
+        .glossary-item:last-child {
+            border-bottom: none;
+        }
+
+        .glossary-item i.book-icon {
+            font-size: 20px;
+            color: #333;
+            margin-top: 2px;
+        }
+
+        .item-info {
+            flex: 1;
+        }
+
+        .item-link {
+            font-size: 15px;
+            color: var(--oracle-blue);
+            text-decoration: none;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .item-link:hover {
+            text-decoration: underline;
+        }
+
+        .item-row {
+            display: flex;
+            gap: 40px;
+            font-size: 12px;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .item-row span strong {
+            font-weight: 650;
+        }
+
+        .item-desc {
+            font-size: 12px;
+            color: #333;
+        }
+
+        .item-options {
+            padding: 0 10px;
+            color: #666;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        /* Pagination Area */
+        .pagination-area {
+            background: #fdfdfd;
+            border: 1px solid var(--border-color);
+            border-top: none;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .page-ctrl {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .page-box {
+            width: 24px;
+            height: 24px;
+            border: 1px solid #ccc;
+            text-align: center;
+            background: white;
+            font-size: 11px;
+            line-height: 22px;
+        }
+
+        .nav-icons {
+            display: flex;
+            gap: 2px;
+            color: #ccc;
+            margin-left: 8px;
+        }
+
+        .nav-icons i {
+            padding: 4px;
+            cursor: default;
+        }
+
+        .nav-icons i.active {
+            color: #777;
+            cursor: pointer;
+        }
+
+        /* Footer */
+        .site-footer {
+            background: white;
+            border-top: 1px solid #ddd;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #999;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 14px;
+        }
+
+        .footer-links a {
+            color: var(--oracle-blue);
+            text-decoration: none;
+        }
+
+        .footer-rw {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-btn {
+            width: 32px;
+            height: 16px;
+            background: #e0e0e0;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .toggle-btn::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="global-header">
+        <div class="header-left">
+            <div class="header-logo-group">
+                <i class="fa-solid fa-bars"></i>
+                <span class="oracle">FoxAI</span>
+            </div>
+            <div class="header-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" placeholder="Search resources, services, documentation, and Marketplace">
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="region-select">
+                <span>VietNam</span>
+                <i class="fa-solid fa-chevron-down"></i>
+            </div>
+            <div class="header-icons">
+                <i class="fa-solid fa-desktop"></i>
+                <i class="fa-regular fa-bell"></i>
+                <i class="fa-solid fa-circle-question"></i>
+                <div class="user-avatar">M</div>
+            </div>
+        </div>
+    </header>
+
+    <div class="breadcrumb">
+        Data Catalog <span class="divider">»</span> <span class="current">foxbank-lakehouse</span>
+    </div>
+
+    <div class="tabs-bar">
+        <div class="tab">
+            <i class="fa-solid fa-house" style="color: #666;"></i> Home
+        </div>
+        <div class="tab active">
+            <i class="fa-solid fa-book" style="color: #333;"></i> Glossaries <span class="tab-close">×</span>
+        </div>
+        <div class="tab">
+            <i class="fa-solid fa-book" style="color: #666;"></i> Risk Manag...
+        </div>
+        <div class="tab">
+            <i class="fa-solid fa-book" style="color: #666;"></i> Enterprise...
+        </div>
+        <div class="tab">
+            <i class="fa-solid fa-table-list" style="color: #666;"></i> Categories and terms
+        </div>
+        <div class="tab">
+            <i class="fa-solid fa-book" style="color: #666;"></i> Customer M...
+        </div>
+        <div class="tab-plus">+</div>
+        <div class="tab-overflow">
+            <i class="fa-solid fa-chevron-down"></i>
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Filters <a href="#">Clear</a></h2>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-label">Updated by <i class="fa-solid fa-circle-info"></i></div>
+                <input type="text" placeholder="Select a user">
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-label">Last updated after <i class="fa-solid fa-circle-info"></i></div>
+                <div class="date-input">
+                    <input type="text" placeholder="mmm dd yyyy">
+                    <i class="fa-regular fa-calendar"></i>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-label">Last updated before <i class="fa-solid fa-circle-info"></i></div>
+                <div class="date-input">
+                    <input type="text" placeholder="mmm dd yyyy">
+                    <i class="fa-regular fa-calendar"></i>
+                </div>
+            </div>
+
+            <div class="custom-filters" style="margin-top: 10px;">
+                <div class="filter-label">Custom Filters <i class="fa-solid fa-circle-info"></i></div>
+                <a href="#" style="color: var(--oracle-blue); font-size: 11px; text-decoration: none;">Clear</a>
+            </div>
+        </aside>
+
+        <main class="content-area">
+            <h1 class="page-title">Glossaries</h1>
+            <p class="last-update-info">Last updated on Dec 10, 2025, 8:30:02 AM UTC</p>
+
+            <div class="action-bar">
+                <button class="btn btn-black">Create Glossary</button>
+                <button class="btn">Refresh</button>
+                <div class="search-inner">
+                    <input type="text" placeholder="Search within glossaries">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </div>
+                <div class="relevance-dropdown">
+                    <span>Relevance</span>
+                    <i class="fa-solid fa-chevron-down" style="font-size: 10px; color: #777;"></i>
+                </div>
+            </div>
+
+            <div class="glossary-list">
+                <!-- Item 1 -->
+                <div class="glossary-item">
+                    <i class="fa-solid fa-book book-icon"></i>
+                    <div class="item-info">
+                        <a href="DATA GOVERNANCE (Các Term thuộc Glossary).html" class="item-link">Banking Business Glossary</a>
+                        <div class="item-row">
+                            <span><strong>Updated by:</strong> Name unavailable</span>
+                            <span><strong>Last updated:</strong> Dec 10, 2025, 8:22:14 AM UTC</span>
+                        </div>
+                        <div class="item-desc">
+                            <strong>Description:</strong> Từ điển nghiệp vụ tổng thể của n...
+                        </div>
+                    </div>
+                    <div class="item-options"><i class="fa-solid fa-ellipsis-vertical"></i></div>
+                </div>
+
+                <!-- Item 2 -->
+                <div class="glossary-item">
+                    <i class="fa-solid fa-book book-icon"></i>
+                    <div class="item-info">
+                        <a href="#" class="item-link">Financial & Accounting Glossary</a>
+                        <div class="item-row">
+                            <span><strong>Updated by:</strong> Name unavailable</span>
+                            <span><strong>Last updated:</strong> Dec 10, 2025, 8:28:46 AM UTC</span>
+                        </div>
+                        <div class="item-desc">
+                            <strong>Description:</strong> Từ điển tài chính - kế toán, lợi...
+                        </div>
+                    </div>
+                    <div class="item-options"><i class="fa-solid fa-ellipsis-vertical"></i></div>
+                </div>
+
+                <!-- Item 3 -->
+                <div class="glossary-item">
+                    <i class="fa-solid fa-book book-icon"></i>
+                    <div class="item-info">
+                        <a href="#" class="item-link">Risk Management Glossary</a>
+                        <div class="item-row">
+                            <span><strong>Updated by:</strong> Name unavailable</span>
+                            <span><strong>Last updated:</strong> Dec 10, 2025, 8:22:55 AM UTC</span>
+                        </div>
+                        <div class="item-desc">
+                            <strong>Description:</strong> Từ điển về các khái niệm quản trị...
+                        </div>
+                    </div>
+                    <div class="item-options"><i class="fa-solid fa-ellipsis-vertical"></i></div>
+                </div>
+            </div>
+
+            <div class="pagination-area">
+                <span>Page</span>
+                <div class="pagination-controls">
+                    <div class="page-ctrl">
+                        <div class="page-box">1</div>
+                        <span>of 1 (1-3 of 3 items)</span>
+                    </div>
+                    <div class="nav-icons">
+                        <i class="fa-solid fa-angles-left"></i>
+                        <i class="fa-solid fa-angle-left"></i>
+                        <div class="page-box" style="border: 1px solid var(--oracle-blue); color: #333;">1</div>
+                        <i class="fa-solid fa-angle-right active"></i>
+                        <i class="fa-solid fa-angles-right active"></i>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="site-footer">
+        <div class="footer-links">
+            <a href="#">Terms of Use and Privacy</a>
+            <a href="#">Cookie Preferences</a>
+        </div>
+        <div>
+            Copyright © 2025, Oracle and/or its affiliates. All rights reserved.
+        </div>
+        <div class="footer-rw">
+            <a href="#" style="color: var(--oracle-blue); text-decoration: none;">Why don't I see Redwood?</a>
+            | Redwood preview
+            <div class="toggle-btn"></div>
+        </div>
+    </footer>
+
+</body>
+
+</html>
