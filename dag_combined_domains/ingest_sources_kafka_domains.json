@@ -1,0 +1,30 @@
+[
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/yellow_tripdata_2020-01.parquet",
+    "source_name": "taxi_yellow_2020",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/green_tripdata_2020-01.parquet",
+    "source_name": "taxi_green_2020",
+    "domain": "taxi",
+    "topic": "green"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/fhv_tripdata_2020-01.parquet",
+    "source_name": "taxi_fhv_2020",
+    "domain": "taxi",
+    "topic": "fhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/fhvhv_tripdata_2020-01.parquet",
+    "source_name": "taxi_fhvhv_2020",
+    "domain": "taxi",
+    "topic": "fhvhv"
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "default_domain": "taxi",
+  "default_topic": "general",
+  "domains": {
+    "taxi": {
+      "enabled": true,
+      "raw_bucket": "raw",
+      "bronze_bucket": "bronze",
+      "silver_bucket": "silver",
+      "gold_bucket": "gold",
+      "raw_prefix": "lakehouse/domains/taxi/raw",
+      "bronze_prefix": "lakehouse/domains/taxi/bronze",
+      "silver_namespace": "taxi",
+      "gold_namespace": "taxi",
+      "default_topic": "tripdata",
+      "source_patterns": [
+        "taxi",
+        "yellow",
+        "green",
+        "fhv",
+        "fhvhv"
+      ],
+      "taxi": {
+        "datasets": {
+          "yellow": {
+            "match_patterns": ["yellow_tripdata_"],
+            "silver_table": "yellow_taxi"
+          },
+          "green": {
+            "match_patterns": ["green_tripdata_"],
+            "silver_table": "green_taxi"
+          },
+          "fhv": {
+            "match_patterns": ["fhv_tripdata_"],
+            "silver_table": "fhv_trip"
+          },
+          "fhvhv": {
+            "match_patterns": ["fhvhv_tripdata_"],
+            "silver_table": "fhvhv_trip"
+          }
+        }
+      }
+    }
+  }
+}

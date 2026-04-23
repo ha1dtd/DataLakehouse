@@ -1,0 +1,16 @@
+[
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/yellow_tripdata_2020-01.parquet",
+    "source_name": "taxi_yellow_2020",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/taxi/green_tripdata_2020-01.parquet",
+    "source_name": "taxi_green_2020",
+    "domain": "taxi",
+    "topic": "green"
+  }
+]
