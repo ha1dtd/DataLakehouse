@@ -1,30 +1,170 @@
 [
   {
     "source_type": "vm_file",
-    "source_uri": "/home/ubuntu/input/taxi/yellow_tripdata_2020-01.parquet",
+    "source_uri": "/home/ubuntu/data_70gb/yellow_tripdata_2020-01.parquet",
     "source_name": "taxi_yellow_2020",
     "domain": "taxi",
     "topic": "yellow"
   },
   {
     "source_type": "vm_file",
-    "source_uri": "/home/ubuntu/input/taxi/green_tripdata_2020-01.parquet",
+    "source_uri": "/home/ubuntu/data_70gb/green_tripdata_2020-01.parquet",
     "source_name": "taxi_green_2020",
     "domain": "taxi",
     "topic": "green"
   },
   {
     "source_type": "vm_file",
-    "source_uri": "/home/ubuntu/input/taxi/fhv_tripdata_2020-01.parquet",
+    "source_uri": "/home/ubuntu/data_70gb/fhv_tripdata_2020-01.parquet",
     "source_name": "taxi_fhv_2020",
     "domain": "taxi",
     "topic": "fhv"
   },
   {
     "source_type": "vm_file",
-    "source_uri": "/home/ubuntu/input/taxi/fhvhv_tripdata_2020-01.parquet",
+    "source_uri": "/home/ubuntu/data_70gb/fhvhv_tripdata_2020-01.parquet",
     "source_name": "taxi_fhvhv_2020",
     "domain": "taxi",
     "topic": "fhvhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/yellow_tripdata_2021-01.parquet",
+    "source_name": "taxi_yellow_2021",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/green_tripdata_2021-01.parquet",
+    "source_name": "taxi_green_2021",
+    "domain": "taxi",
+    "topic": "green"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhv_tripdata_2021-01.parquet",
+    "source_name": "taxi_fhv_2021",
+    "domain": "taxi",
+    "topic": "fhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhvhv_tripdata_2021-01.parquet",
+    "source_name": "taxi_fhvhv_2021",
+    "domain": "taxi",
+    "topic": "fhvhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/yellow_tripdata_2022-01.parquet",
+    "source_name": "taxi_yellow_2022",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/green_tripdata_2022-01.parquet",
+    "source_name": "taxi_green_2022",
+    "domain": "taxi",
+    "topic": "green"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhv_tripdata_2022-01.parquet",
+    "source_name": "taxi_fhv_2022",
+    "domain": "taxi",
+    "topic": "fhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhvhv_tripdata_2022-01.parquet",
+    "source_name": "taxi_fhvhv_2022",
+    "domain": "taxi",
+    "topic": "fhvhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/yellow_tripdata_2023-01.parquet",
+    "source_name": "taxi_yellow_2023",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/green_tripdata_2023-01.parquet",
+    "source_name": "taxi_green_2023",
+    "domain": "taxi",
+    "topic": "green"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhv_tripdata_2023-01.parquet",
+    "source_name": "taxi_fhv_2023",
+    "domain": "taxi",
+    "topic": "fhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhvhv_tripdata_2023-01.parquet",
+    "source_name": "taxi_fhvhv_2023",
+    "domain": "taxi",
+    "topic": "fhvhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/yellow_tripdata_2024-01.parquet",
+    "source_name": "taxi_yellow_2024",
+    "domain": "taxi",
+    "topic": "yellow"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/green_tripdata_2024-01.parquet",
+    "source_name": "taxi_green_2024",
+    "domain": "taxi",
+    "topic": "green"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhv_tripdata_2024-01.parquet",
+    "source_name": "taxi_fhv_2024",
+    "domain": "taxi",
+    "topic": "fhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/data_70gb/fhvhv_tripdata_2024-01.parquet",
+    "source_name": "taxi_fhvhv_2024",
+    "domain": "taxi",
+    "topic": "fhvhv"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/synthetic_domains_1m/hr.csv",
+    "source_name": "hr",
+    "domain": "hr",
+    "topic": "hr"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/synthetic_domains_1m/finance.xml",
+    "source_name": "finance",
+    "domain": "finance",
+    "topic": "finance"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/synthetic_domains_1m/marketing.json",
+    "source_name": "marketing",
+    "domain": "marketing",
+    "topic": "marketing"
+  },
+  {
+    "source_type": "vm_file",
+    "source_uri": "/home/ubuntu/input/demo/sample_orders_broken.xml",
+    "source_name": "finance_broken_xml",
+    "domain": "finance",
+    "topic": "finance"
   }
 ]

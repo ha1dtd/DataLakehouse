@@ -7,7 +7,7 @@ from pyspark.sql.functions import col, count, dayofweek, hour, round, sum, when
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://192.168.100.66:9001")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "12345678")
-DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/scripts/domain_registry_v2.json")
+DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 spark = SparkSession.builder \
     .appName("GoldFromSilverDomains") \
@@ -155,12 +155,59 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
         ).writeTo(f"gold_catalog.{gold_namespace}.fhvhv_trip_summary").createOrReplace()
 
 
+def process_non_taxi_domain(domain_name: str, domain_cfg: dict):
+    silver_namespace = domain_cfg.get("silver_namespace", domain_name)
+    gold_namespace = domain_cfg.get("gold_namespace", domain_name)
+    topics = domain_cfg.get("topics", {})
+
+    create_namespace_if_needed("gold_catalog", gold_namespace)
+
+    for topic_name, topic_cfg in topics.items():
+        silver_table = topic_cfg.get("silver_table", f"{topic_name}_silver")
+        gold_table = topic_cfg.get("gold_table", f"{topic_name}_summary")
+
+        silver_fqn = f"silver_catalog.{silver_namespace}.{silver_table}"
+        gold_fqn = f"gold_catalog.{gold_namespace}.{gold_table}"
+
+        if not table_exists(silver_fqn):
+            continue
+
+        df = spark.read.table(silver_fqn)
+
+        if domain_name == "hr":
+            out = df.groupBy("domain", "department", "attendance_status").agg(
+                count("*").alias("record_count"),
+                round(sum("hours_worked"), 2).alias("total_hours_worked")
+            )
+        elif domain_name == "finance":
+            out = df.groupBy("domain", "cost_center").agg(
+                count("*").alias("record_count"),
+                round(sum("money_input"), 2).alias("total_money_input"),
+                round(sum("money_output"), 2).alias("total_money_output"),
+                round(sum("profit"), 2).alias("total_profit")
+            )
+        elif domain_name == "marketing":
+            out = df.groupBy("domain", "channel").agg(
+                count("*").alias("record_count"),
+                round(sum("spend_usd"), 2).alias("total_spend_usd"),
+                sum("clicks").alias("total_clicks"),
+                sum("conversions").alias("total_conversions")
+            ).withColumn(
+                "conversion_rate",
+                round(when(col("total_clicks") > 0, col("total_conversions") / col("total_clicks")).otherwise(0.0), 4)
+            )
+        else:
+            out = df.groupBy("domain").agg(count("*").alias("record_count"))
+
+        out.writeTo(gold_fqn).createOrReplace()
+        print(f"### Wrote {gold_fqn}")
+
 for domain_name, domain_cfg in domains.items():
     if not domain_cfg.get("enabled", True):
         continue
     if "taxi" in domain_cfg:
         process_taxi_domain(domain_name, domain_cfg)
     else:
-        print(f"### Skip domain '{domain_name}': no domain-specific gold processor yet")
+        process_non_taxi_domain(domain_name, domain_cfg)
 
 print("### Gold domain pipeline completed")

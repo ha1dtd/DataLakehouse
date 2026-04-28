@@ -9,7 +9,7 @@ MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "12345678")
 ERROR_BUCKET = os.environ.get("ERROR_BUCKET", "error")
 ERROR_PREFIX = os.environ.get("ERROR_PREFIX", "lakehouse/errors/bronze")
-DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/scripts/domain_registry_v2.json")
+DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 spark = SparkSession.builder \
     .appName("BronzeFromRawDomains") \
@@ -51,9 +51,30 @@ domains = domain_registry.get("domains", {})
 raw_df = spark.read.table("raw_catalog.control.raw_registry") \
     .filter((col("status") == "landed") & (col("file_type").isin("json", "csv", "xml", "parquet")))
 
-records = []
+processed_success_df = spark.read.table("bronze_catalog.control.raw_file_registry") \
+    .filter(col("status") == "success") \
+    .select("domain", "topic", "source_name", "source_uri", "raw_bucket", "raw_object_key", "file_name") \
+    .distinct()
 
-for row in raw_df.collect():
+candidate_df = raw_df.alias("r").join(
+    processed_success_df.alias("p"),
+    on=[
+        col("r.domain") == col("p.domain"),
+        col("r.topic") == col("p.topic"),
+        col("r.source_name") == col("p.source_name"),
+        col("r.source_uri") == col("p.source_uri"),
+        col("r.bucket") == col("p.raw_bucket"),
+        col("r.object_key") == col("p.raw_object_key"),
+        col("r.file_name") == col("p.file_name"),
+    ],
+    how="left_anti"
+)
+
+records = []
+rows = candidate_df.collect()
+skipped_already_bronzed = raw_df.count() - len(rows)
+
+for row in rows:
     domain_cfg = domains.get(row["domain"], {})
     bronze_bucket = domain_cfg.get("bronze_bucket", "bronze")
     bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/domains/{row['domain']}/bronze")
@@ -118,3 +139,4 @@ if records:
     out.writeTo("bronze_catalog.control.raw_file_registry").append()
 
 print(f"BRONZE_PROCESSED={len(records)}")
+print(f"SKIPPED_ALREADY_BRONZED={skipped_already_bronzed}")

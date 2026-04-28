@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "192.168.100.66:9092")
 KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "raw_ingest_events")
-SOURCES_FILE = os.environ.get("INGEST_SOURCES_FILE", "/home/ubuntu/scripts/ingest_sources_kafka_domains.json")
+SOURCES_FILE = os.environ.get("INGEST_SOURCES_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/ingest_sources_kafka_domains.json")
 KAFKA_BIN = os.environ.get("KAFKA_BIN", "/opt/confluent/bin")
-DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/scripts/domain_registry_v2.json")
+DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 
 def utc_now_iso() -> str:

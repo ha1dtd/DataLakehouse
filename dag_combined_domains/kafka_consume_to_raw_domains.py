@@ -17,7 +17,7 @@ MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "12345678")
 ERROR_BUCKET = os.environ.get("ERROR_BUCKET", "error")
 ERROR_PREFIX = os.environ.get("ERROR_PREFIX", "lakehouse/errors/raw_ingest_kafka")
-DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/scripts/domain_registry_v2.json")
+DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 spark = SparkSession.builder \
     .appName("KafkaConsumeToRawDomains") \
@@ -109,6 +109,18 @@ def resolve_domain_config(domain_name: str):
 records = []
 messages = read_messages_from_kafka_cli(MAX_MESSAGES)
 processed = 0
+skipped_already_landed = 0
+
+existing_landed = spark.read.table("raw_catalog.control.raw_registry") \
+    .filter("status = 'landed'") \
+    .select("domain", "topic", "source_name", "source_uri", "file_name") \
+    .distinct() \
+    .collect()
+
+landed_keys = {
+    (row["domain"], row["topic"], row["source_name"], row["source_uri"], row["file_name"])
+    for row in existing_landed
+}
 
 for payload in messages:
     job_id = payload.get("job_id")
@@ -119,6 +131,12 @@ for payload in messages:
     topic = payload.get("topic") or default_topic
     file_name = payload.get("file_name") or os.path.basename(urlparse(source_uri).path)
     file_type = payload.get("file_type") or os.path.splitext(file_name)[1].lstrip(".").lower() or "unknown"
+
+    dedupe_key = (domain, topic, source_name, source_uri, file_name)
+    if dedupe_key in landed_keys:
+        skipped_already_landed += 1
+        continue
+
     local_tmp = f"/tmp/{job_id}_{file_name}"
     status = "landed"
     error_message = None
@@ -176,8 +194,12 @@ for payload in messages:
     ))
     processed += 1
 
+    if status == "landed":
+        landed_keys.add(dedupe_key)
+
 if records:
     df = spark.createDataFrame(records, schema="job_id string, domain string, topic string, source_type string, source_name string, source_uri string, bucket string, object_key string, file_name string, file_type string, file_size_bytes long, ingest_ts timestamp, status string, error_message string")
     df.writeTo("raw_catalog.control.raw_registry").append()
 
 print(f"PROCESSED_MESSAGES={processed}")
+print(f"SKIPPED_ALREADY_LANDED={skipped_already_landed}")

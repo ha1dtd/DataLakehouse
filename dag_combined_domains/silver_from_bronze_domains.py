@@ -8,7 +8,7 @@ from pyspark.sql.functions import col, coalesce, current_timestamp, lit, to_time
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://192.168.100.66:9001")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "12345678")
-DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/scripts/domain_registry_v2.json")
+DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 spark = SparkSession.builder \
     .appName("SilverFromBronzeDomains") \
@@ -302,10 +302,88 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
         print(f"### Wrote silver_catalog.{silver_namespace}.fhvhv_trip")
 
 
+def process_non_taxi_domain(domain_name: str, domain_cfg: dict):
+    bronze_bucket = domain_cfg.get("bronze_bucket", "bronze")
+    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/domains/{domain_name}/bronze")
+    silver_namespace = domain_cfg.get("silver_namespace", domain_name)
+    topics = domain_cfg.get("topics", {})
+
+    create_namespace_if_needed("silver_catalog", silver_namespace)
+
+    for topic_name, topic_cfg in topics.items():
+        silver_table = topic_cfg.get("silver_table", f"{topic_name}_silver")
+        paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/{topic_name}/*/*.parquet")
+        if not paths:
+            continue
+
+        raw = read_and_merge_varying_schemas(paths)
+
+        if domain_name == "hr":
+            silver_df = raw.select(
+                col("employee_id").cast("string").alias("employee_id"),
+                to_timestamp(col("day_worked")).alias("day_worked"),
+                col("department").cast("string").alias("department"),
+                col("hours_worked").cast("double").alias("hours_worked"),
+                col("attendance_status").cast("string").alias("attendance_status"),
+                col("topic").cast("string").alias("topic")
+            ).filter(
+                col("employee_id").isNotNull() &
+                col("day_worked").isNotNull() &
+                col("hours_worked").isNotNull() &
+                (col("hours_worked") >= 0)
+            )
+        elif domain_name == "finance":
+            silver_df = raw.select(
+                col("finance_id").cast("string").alias("finance_id"),
+                to_timestamp(col("report_date")).alias("report_date"),
+                col("money_input").cast("double").alias("money_input"),
+                col("money_output").cast("double").alias("money_output"),
+                col("profit").cast("double").alias("profit"),
+                col("cost_center").cast("string").alias("cost_center"),
+                col("topic").cast("string").alias("topic")
+            ).filter(
+                col("finance_id").isNotNull() &
+                col("report_date").isNotNull() &
+                col("money_input").isNotNull() &
+                col("money_output").isNotNull() &
+                col("profit").isNotNull() &
+                (col("money_input") >= 0) &
+                (col("money_output") >= 0)
+            )
+        elif domain_name == "marketing":
+            silver_df = raw.select(
+                col("campaign_id").cast("string").alias("campaign_id"),
+                col("lead_id").cast("string").alias("lead_id"),
+                col("channel").cast("string").alias("channel"),
+                col("spend_usd").cast("double").alias("spend_usd"),
+                col("clicks").cast("long").alias("clicks"),
+                col("conversions").cast("long").alias("conversions"),
+                col("event_time").cast("timestamp").alias("event_time"),
+                col("topic").cast("string").alias("topic")
+            ).filter(
+                col("campaign_id").isNotNull() &
+                col("event_time").isNotNull() &
+                col("spend_usd").isNotNull() &
+                col("clicks").isNotNull() &
+                col("conversions").isNotNull() &
+                (col("spend_usd") >= 0) &
+                (col("clicks") >= 0) &
+                (col("conversions") >= 0)
+            )
+        else:
+            silver_df = raw
+
+        silver_df = silver_df.withColumn("domain", lit(domain_name)) \
+                             .withColumn("dataset", lit(topic_name)) \
+                             .withColumn("silver_processed_ts", current_timestamp())
+
+        silver_df.writeTo(f"silver_catalog.{silver_namespace}.{silver_table}").createOrReplace()
+        print(f"### Wrote silver_catalog.{silver_namespace}.{silver_table}")
+
 for domain_name, domain_cfg in domains.items():
     if not domain_cfg.get("enabled", True):
         continue
     if "taxi" in domain_cfg:
         process_taxi_domain(domain_name, domain_cfg)
     else:
-        print(f"### Skip domain '{domain_name}': no domain-specific silver processor yet")
+        process_non_taxi_domain(domain_name, domain_cfg)
