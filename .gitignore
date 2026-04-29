@@ -1,0 +1,32 @@
+# Local test/data folders
+data_test/
+minio_test/
+
+# Large data artifacts
+*.parquet
+*.csv
+*.jsonl
+*.avro
+*.orc
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.bin
+*.dat
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Keep repository clean from accidental large files
+# (Git itself cannot enforce >100MB by size in .gitignore,
+# so we ignore common large artifact patterns instead.)
