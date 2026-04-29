@@ -37,9 +37,9 @@ SPARK_COMMON = """
 
 default_args = {"owner": "you", "start_date": datetime(2024, 1, 1), "retries": 1, "depends_on_past": False}
 
-with DAG(dag_id="silver_histograms_sample", default_args=default_args, schedule_interval=None, catchup=False) as dag:
+with DAG(dag_id="silver_histograms_20pct_new", default_args=default_args, schedule_interval=None, catchup=False) as dag:
     run_hist = BashOperator(
-        task_id="generate_sample_histograms",
+        task_id="generate_histograms_shuffled_20pct",
         bash_command=f"""
         /opt/spark/bin/spark-submit \
         {SPARK_COMMON} \
@@ -48,6 +48,6 @@ with DAG(dag_id="silver_histograms_sample", default_args=default_args, schedule_
         --conf spark.sql.catalog.silver_catalog.type=hadoop \
         --conf spark.sql.catalog.silver_catalog.warehouse=s3a://silver/lakehouse/ \
         {S3A_CONF} \
-        {SCRIPT_BASE}/silver_histograms.py --mode sample --bucket histogram
+        {SCRIPT_BASE}/silver_histograms_new.py --mode full --bucket histogram --sample-fraction 0.2 --seed 42 --bins 50
 """
     )
