@@ -39,7 +39,7 @@ default_args = {"owner": "you", "start_date": datetime(2024, 1, 1), "retries": 1
 
 with DAG(dag_id="silver_histograms_20pct_new", default_args=default_args, schedule_interval=None, catchup=False) as dag:
     run_hist = BashOperator(
-        task_id="generate_histograms_shuffled_20pct",
+        task_id="generate_histograms_random_20pct",
         bash_command=f"""
         /opt/spark/bin/spark-submit \
         {SPARK_COMMON} \

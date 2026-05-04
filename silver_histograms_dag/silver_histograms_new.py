@@ -42,22 +42,98 @@ def to_numeric_df(df, cols):
     return df.select(*[F.col(c).cast(DoubleType()).alias(c) for c in cols])
 
 
-def shuffled_sample_df(df, fraction, seed):
-    return df.orderBy(F.rand(seed)).sample(withReplacement=False, fraction=fraction, seed=seed)
+def sampled_df(df, fraction, seed):
+    return df.sample(withReplacement=False, fraction=fraction, seed=seed)
 
 
-def build_histogram_map(df, cols, bins):
+def auto_outlier_bounds(df, cols, rel_err=0.01):
+    bounds = {}
+    for c in cols:
+        try:
+            q01, q25, _q50, q75, q99 = df.approxQuantile(c, [0.01, 0.25, 0.50, 0.75, 0.99], rel_err)
+            if any(v is None or math.isnan(v) for v in [q01, q25, q75, q99]):
+                continue
+
+            iqr = q75 - q25
+            if iqr <= 0:
+                lo, hi = q01, q99
+            else:
+                lo = max(q01, q25 - 3.0 * iqr)
+                hi = min(q99, q75 + 3.0 * iqr)
+
+            if hi <= lo:
+                hi = lo + 1.0
+            bounds[c] = (float(lo), float(hi))
+        except Exception:
+            continue
+    return bounds
+
+
+def compute_data_bounds(df, cols, min_floor_by_col=None):
+    min_floor_by_col = min_floor_by_col or {}
+    bounds = {}
+    if not cols:
+        return bounds
+
+    agg_exprs = []
+    for c in cols:
+        agg_exprs.append(F.min(F.col(c)).alias(f"__min__{c}"))
+        agg_exprs.append(F.max(F.col(c)).alias(f"__max__{c}"))
+
+    row = df.agg(*agg_exprs).collect()[0]
+    for c in cols:
+        cmin = row[f"__min__{c}"]
+        cmax = row[f"__max__{c}"]
+        if cmin is None or cmax is None:
+            continue
+
+        floor = min_floor_by_col.get(c)
+        if floor is not None and cmin < floor:
+            cmin = floor
+
+        if cmax <= cmin:
+            cmax = cmin + 1.0
+
+        bounds[c] = (float(cmin), float(cmax))
+
+    return bounds
+
+
+def clip_to_bounds(df, bounds):
+    clipped = df
+    for c, (lo, hi) in bounds.items():
+        clipped = clipped.withColumn(
+            c,
+            F.when(F.col(c).isNull(), None)
+             .when(F.col(c) < F.lit(lo), F.lit(lo))
+             .when(F.col(c) > F.lit(hi), F.lit(hi))
+             .otherwise(F.col(c))
+        )
+    return clipped
+
+
+def split_range_and_peak(df, bounds):
+    in_range_cond = F.lit(True)
+    peak_cond = F.lit(False)
+
+    for c, (_lo, hi) in bounds.items():
+        in_range_cond = in_range_cond & (F.col(c).isNull() | (F.col(c) <= F.lit(hi)))
+        peak_cond = peak_cond | (F.col(c).isNotNull() & (F.col(c) > F.lit(hi)))
+
+    in_range_df = df.filter(in_range_cond)
+    peak_df = df.filter(peak_cond)
+    return in_range_df, peak_df
+
+def build_histogram_map(df, cols, bins, bounds):
     if not cols:
         return {}
 
-    stats = df.select(*cols).summary("min", "max").toPandas().set_index("summary")
     bucket_cols, meta = [], []
 
     for c in cols:
-        cmin = float(stats.loc["min", c])
-        cmax = float(stats.loc["max", c])
-        if math.isnan(cmin) or math.isnan(cmax):
+        if c not in bounds:
             continue
+        cmin, cmax = bounds[c]
         if cmax <= cmin:
             cmax = cmin + 1.0
 
@@ -86,6 +162,49 @@ def build_histogram_map(df, cols, bins):
     return result
 
 
+EXPLICIT_UNITS = {
+    "trip_duration": "minutes",
+    "trip_duration_minutes": "minutes",
+    "duration_minutes": "minutes",
+    "trip_time_seconds": "seconds",
+    "trip_distance": "miles",
+    "distance_miles": "miles",
+    "fare_amount": "USD",
+    "tip_amount": "USD",
+    "tolls_amount": "USD",
+    "extra": "USD",
+    "mta_tax": "USD",
+    "improvement_surcharge": "USD",
+    "total_amount": "USD",
+    "pickup_latitude": "degrees",
+    "pickup_longitude": "degrees",
+    "dropoff_latitude": "degrees",
+    "dropoff_longitude": "degrees",
+    "passenger_count": "count",
+}
+
+
+def infer_unit(col_name):
+    key = col_name.lower()
+    unit = EXPLICIT_UNITS.get(key)
+    if unit:
+        return unit
+
+    if "duration" in key or key.endswith("_minutes"):
+        return "minutes"
+    if "distance" in key or "miles" in key:
+        return "miles"
+    if "amount" in key or "fare" in key or "tip" in key or "toll" in key or "tax" in key or "surcharge" in key or "pay" in key:
+        return "USD"
+    if "time_seconds" in key or key.endswith("_seconds"):
+        return "seconds"
+    if "count" in key:
+        return "count"
+    if "latitude" in key or "longitude" in key:
+        return "degrees"
+    return "value"
+
+
 def plot_all_features(agg_map, out_file, title):
     cols = list(agg_map.keys())
     if not cols:
@@ -98,8 +217,11 @@ def plot_all_features(agg_map, out_file, title):
 
     for ax, c in zip(axes, cols):
         xs, ys, width = agg_map[c]
+        unit = infer_unit(c)
         ax.bar(xs, ys, width=width * 0.95)
         ax.set_title(c)
+        ax.set_xlabel(f"{c} ({unit})")
+        ax.set_ylabel("record_count")
 
     for ax in axes[len(cols):]:
         ax.axis("off")
@@ -146,21 +268,47 @@ def main():
             print(f"skip {dataset}: no numeric columns")
             continue
 
-        working_df = shuffled_sample_df(to_numeric_df(df, numeric_cols), args.sample_fraction, args.seed)
-        if args.mode == "sample":
-            working_df = working_df.limit(100000)
+        working_df = sampled_df(
+            to_numeric_df(df, numeric_cols),
+            args.sample_fraction,
+            args.seed,
+        ).cache()
 
-        agg_map = build_histogram_map(working_df, numeric_cols, args.bins)
-        if not agg_map:
-            print(f"skip {dataset}: no usable numeric features after sampling")
+        if args.mode == "sample":
+            working_df = working_df.limit(100000).cache()
+
+        bounds = auto_outlier_bounds(working_df, numeric_cols)
+        if not bounds:
+            print(f"skip {dataset}: no usable numeric features after outlier profiling")
             continue
 
-        out_file = os.path.join(tmpdir, f"{dataset}_{args.mode}_histogram.png")
-        title = f"{dataset} - shuffled {int(args.sample_fraction * 100)}% histogram profile ({args.mode})"
-        plot_all_features(agg_map, out_file, title)
+        in_range_df, peak_df = split_range_and_peak(working_df, bounds)
 
-        upload_with_aws(out_file, args.bucket, os.path.basename(out_file))
-        print(f"uploaded: s3://{args.bucket}/{os.path.basename(out_file)}")
+        in_range_map = build_histogram_map(in_range_df, list(bounds.keys()), args.bins, bounds)
+        if not in_range_map:
+            print(f"skip {dataset}: no usable numeric features after in-range filtering")
+            continue
+
+        in_range_file = os.path.join(tmpdir, f"{dataset}_{args.mode}_histogram_in_range.png")
+        in_range_title = f"{dataset} - random {int(args.sample_fraction * 100)}% histogram profile ({args.mode}, peak-removed)"
+        plot_all_features(in_range_map, in_range_file, in_range_title)
+        upload_with_aws(in_range_file, args.bucket, os.path.basename(in_range_file))
+        print(f"uploaded: s3://{args.bucket}/{os.path.basename(in_range_file)}")
+
+        peak_bounds = compute_data_bounds(
+            peak_df,
+            list(bounds.keys()),
+            min_floor_by_col={c: hi for c, (_lo, hi) in bounds.items()},
+        )
+        peak_map = build_histogram_map(peak_df, list(peak_bounds.keys()), args.bins, peak_bounds)
+        if peak_map:
+            peak_file = os.path.join(tmpdir, f"{dataset}_{args.mode}_histogram_peak.png")
+            peak_title = f"{dataset} - random {int(args.sample_fraction * 100)}% histogram profile ({args.mode}, peak-only, starts-above-in-range)"
+            plot_all_features(peak_map, peak_file, peak_title)
+            upload_with_aws(peak_file, args.bucket, os.path.basename(peak_file))
+            print(f"uploaded: s3://{args.bucket}/{os.path.basename(peak_file)}")
+        else:
+            print(f"info {dataset}: no high-end peak values found to render peak-only chart")
 
         if args.mode == "sample":
             print(f"\n--- {dataset} sampled describe ---")

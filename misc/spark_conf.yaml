@@ -1,6 +1,0 @@
-spark_worker:
-  instances: 2
-  cores: 4
-
-spark_executor:
-  cores: 4
