@@ -8,10 +8,35 @@ import tempfile
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator, ScalarFormatter, FuncFormatter
 from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, NumericType
+
+DATASET_DISPLAY_NAMES = {
+    "yellow_taxi": "Yellow Taxi Trips",
+    "green_taxi": "Green Taxi Trips",
+    "fhv_trip": "For-Hired Vehicle (FHV) Trips",
+    "fhvhv_trip": "High Volume For-Hired Vehicle (FHVHV) Trips",
+}
+
+FEATURE_DISPLAY_NAMES = {
+    "trip_distance": "Trip Distance",
+    "fare_amount": "Fare Amount",
+    "total_amount": "Total Amount",
+    "trip_duration_minutes": "Trip Duration",
+    "mta_tax": "MTA Tax",
+    "tolls_amount": "Toll Charges",
+    "trip_miles": "Trip Miles",
+    "trip_time_seconds": "Trip Time",
+    "base_passenger_fare": "Base Passenger Fare",
+    "bcf": "Black Car Fund Surcharge",
+    "sales_tax": "Sales Tax",
+    "driver_pay": "Driver Pay",
+    "tolls": "Tolls",
+    "tips": "Tips",
+}
 
 MINIO_ENDPOINT = "http://192.168.100.66:9001"
 MINIO_ACCESS_KEY = "admin"
@@ -24,11 +49,14 @@ TABLES = {
     "fhvhv_trip": "silver_catalog.default.fhvhv_trip",
 }
 
+GLOBAL_IN_RANGE_HI_CAP = 200.0
+DEFAULT_COVERAGE_QUANTILE = 0.995
+
 IN_RANGE_HI_CAPS = {
-    "tolls_amount": 100.0,
-    "mta_tax": 5.0,
-    "tips": 50.0,
-    "tip_amount": 50.0,
+    "tolls_amount": 200.0,
+    "mta_tax": 20.0,
+    "tips": 200.0,
+    "tip_amount": 200.0,
 }
 
 PEAK_FEATURES_BY_DATASET = {
@@ -77,7 +105,7 @@ def sampled_df(df, fraction, seed):
     return df.sample(withReplacement=False, fraction=fraction, seed=seed)
 
 
-def auto_outlier_bounds(df, cols, rel_err=0.02):
+def auto_outlier_bounds(df, cols, rel_err=0.02, bound_mode="two_stage_iqr", coverage_quantile=DEFAULT_COVERAGE_QUANTILE):
     bounds = {}
     for c in cols:
         try:
@@ -87,14 +115,32 @@ def auto_outlier_bounds(df, cols, rel_err=0.02):
 
             iqr = q75 - q25
             if iqr <= 0:
-                lo, hi = q01, q99
+                lo, hi = 0, q99
             else:
-                lo = max(q01, q25 - 3.0 * iqr)
+                lo = 0
                 hi = min(q99, q75 + 3.0 * iqr)
 
-            capped_hi = IN_RANGE_HI_CAPS.get(c)
-            if capped_hi is not None:
-                hi = min(hi, float(capped_hi))
+            if bound_mode == "coverage_quantile":
+                cq = max(0.90, min(float(coverage_quantile), 0.9999))
+                q_cov = df.approxQuantile(c, [cq], rel_err)[0]
+                if q_cov is not None and not math.isnan(q_cov):
+                    hi = max(hi, float(q_cov))
+            elif bound_mode == "two_stage_iqr":
+                tail_df = df.filter(F.col(c).isNotNull() & (F.col(c) > F.lit(hi)))
+                tqs = tail_df.approxQuantile(c, [0.25, 0.75, 0.99], rel_err)
+                if len(tqs) == 3:
+                    tq25, tq75, tq99 = tqs
+                    if not any(v is None or math.isnan(v) for v in [tq25, tq75, tq99]):
+                        tiqr = tq75 - tq25
+                        if tiqr > 0:
+                            hi2 = min(tq99, tq75 + 3.0 * tiqr)
+                        else:
+                            hi2 = tq99
+                        if hi2 is not None and not math.isnan(hi2):
+                            hi = max(hi, float(hi2))
+            else:
+                target_hi = IN_RANGE_HI_CAPS.get(c, GLOBAL_IN_RANGE_HI_CAP)
+                hi = max(hi, float(target_hi))
 
             if hi <= lo:
                 hi = lo + 1.0
@@ -104,8 +150,9 @@ def auto_outlier_bounds(df, cols, rel_err=0.02):
     return bounds
 
 
-def compute_data_bounds(df, cols, min_floor_by_col=None):
+def compute_data_bounds(df, cols, min_floor_by_col=None, max_cap_by_col=None):
     min_floor_by_col = min_floor_by_col or {}
+    max_cap_by_col = max_cap_by_col or {}
     bounds = {}
     if not cols:
         return bounds
@@ -125,6 +172,10 @@ def compute_data_bounds(df, cols, min_floor_by_col=None):
         floor = min_floor_by_col.get(c)
         if floor is not None and cmin < floor:
             cmin = floor
+
+        cap = max_cap_by_col.get(c)
+        if cap is not None and cmax > cap:
+            cmax = cap
 
         if cmax <= cmin:
             cmax = cmin + 1.0
@@ -172,7 +223,7 @@ def build_histogram_map(df, cols, bins, bounds):
         if cmax <= cmin:
             cmax = cmin + 1.0
 
-        width = (cmax - cmin) / bins
+        width = max(1, round((cmax - cmin) / bins))
         bucket = F.when(F.col(c).isNull(), None).otherwise(
             F.when(F.col(c) >= cmax, F.lit(bins - 1)).otherwise(
                 F.floor((F.col(c) - F.lit(cmin)) / F.lit(width))
@@ -191,7 +242,7 @@ def build_histogram_map(df, cols, bins, bounds):
                   .orderBy(bin_col)
                   .collect())
         idx_to_count = {int(r[bin_col]): int(r["count"]) for r in counts if r[bin_col] is not None}
-        xs = [cmin + (i + 0.5) * width for i in range(bins)]
+        xs = [int(round(cmin + (i + 0.5) * width)) for i in range(bins)]
         ys = [idx_to_count.get(i, 0) for i in range(bins)]
         result[c] = (xs, ys, width)
     return result
@@ -203,14 +254,21 @@ EXPLICIT_UNITS = {
     "duration_minutes": "minutes",
     "trip_time_seconds": "seconds",
     "trip_distance": "miles",
+    "trip_miles": "miles",
     "distance_miles": "miles",
     "fare_amount": "USD",
     "tip_amount": "USD",
+    "tips": "USD",
+    "tolls": "USD",
     "tolls_amount": "USD",
     "extra": "USD",
     "mta_tax": "USD",
     "improvement_surcharge": "USD",
     "total_amount": "USD",
+    "base_passenger_fare": "USD",
+    "bcf": "USD",
+    "sales_tax": "USD",
+    "driver_pay": "USD",
     "pickup_latitude": "degrees",
     "pickup_longitude": "degrees",
     "dropoff_latitude": "degrees",
@@ -240,39 +298,122 @@ def infer_unit(col_name):
     return "value"
 
 
+def humanize_dataset_name(name):
+    if name in DATASET_DISPLAY_NAMES:
+        return DATASET_DISPLAY_NAMES[name]
+    cleaned = name.replace("_", " ").strip()
+    return " ".join(w.capitalize() for w in cleaned.split())
+
+def humanize_feature_name(name):
+    if name in FEATURE_DISPLAY_NAMES:
+        return FEATURE_DISPLAY_NAMES[name]
+    cleaned = name.replace("_", " ").strip()
+    return " ".join(w.capitalize() for w in cleaned.split())
+
+def format_unit(unit):
+    mapping = {
+        "USD": "USD ($)",
+        "minutes": "minutes",
+        "miles": "miles",
+        "seconds": "seconds",
+        "degrees": "degrees",
+        "count": "count",
+        "value": "value",
+    }
+    return mapping.get(unit, unit)
+
 def safe_feature_folder_name(feature_name):
     return feature_name.replace("/", "_").replace(" ", "_")
 
 
-def plot_single_feature(xs, ys, width, out_file, title, feature_name, y_log=False, x_log=False, prefix=None, style="bar"):
+def format_thousands_dot(v, _pos=None):
+    try:
+        return f"{int(round(v)):,}".replace(",", ".")
+    except Exception:
+        return str(v)
+
+def plot_single_feature(xs, ys, width, out_file, title, feature_name, y_log=False, x_log=False, prefix=None, style="bar", raw_min=None, raw_max=None):
     unit = infer_unit(feature_name)
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    feature_label = humanize_feature_name(feature_name)
+
+    plt.style.use("seaborn-v0_8-darkgrid")
+    fig, ax = plt.subplots(1, 1, figsize=(14.0, 9.0), facecolor="#f6f9ff")
+    ax.set_facecolor("#eef4ff")
+
+    is_peak = prefix == "PEAK"
+    draw_xs = list(xs)
+    draw_ys = list(ys)
+
+    if is_peak:
+        peak_pts = [(x, y) for x, y in zip(draw_xs, draw_ys) if x is not None and y is not None and x > 0]
+        if peak_pts:
+            draw_xs, draw_ys = zip(*peak_pts)
+            draw_xs, draw_ys = list(draw_xs), list(draw_ys)
 
     if style == "line":
-        pts = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        pts = [(x, y) for x, y in zip(draw_xs, draw_ys) if x is not None and y is not None and y > 0]
         if x_log:
             pts = [(x, y) for x, y in pts if x > 0]
 
         if pts:
             px, py = zip(*pts)
-            ax.plot(px, py, linewidth=1.8)
+            ax.plot(px, py, linewidth=2.5, color="#2563eb", label="Peak pattern")
+            ax.fill_between(px, py, alpha=0.2, color="#60a5fa")
+            ax.legend(loc="upper right", frameon=True)
         else:
-            ax.text(0.5, 0.5, "No positive x values for log-scale peak chart", ha="center", va="center", transform=ax.transAxes)
+            ax.text(0.5, 0.5, "No usable values for peak chart", ha="center", va="center", transform=ax.transAxes)
     else:
-        ax.bar(xs, ys, width=width * 0.95)
+        ax.bar(draw_xs, draw_ys, width=width * 0.95, color="#3b82f6", edgecolor="#1e3a8a", linewidth=0.4)
 
-    if prefix:
-        ax.set_title(f"{prefix}: {feature_name}")
+    section_name = "Peak Distribution" if is_peak else None
+    chart_title = f"{feature_label} - {section_name}" if section_name else feature_label
+    ax.set_title(chart_title, fontsize=22, fontweight="bold", color="#0f172a")
+    ax.set_xlabel(f"{feature_label} ({format_unit(unit)})", fontsize=16)
+    ax.set_ylabel("Number of records", fontsize=16)
+    ax.tick_params(axis="both", labelsize=13)
+    ax.yaxis.set_major_formatter(FuncFormatter(format_thousands_dot))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=20, min_n_ticks=14))
+
+    if is_peak and draw_xs:
+        xmax = max(draw_xs)
+        axis_start = 0
+        tick_start = axis_start
+        tick_end = int(math.ceil(xmax / 20.0) * 20)
+        if tick_end <= tick_start:
+            tick_end = tick_start + 20
+        ticks = list(range(tick_start, tick_end + 1, 20))
+        if ticks:
+            ax.set_xticks(ticks)
+        ax.set_xlim(left=axis_start)
     else:
-        ax.set_title(feature_name)
-    ax.set_xlabel(f"{feature_name} ({unit})")
-    ax.set_ylabel("record_count")
-    if y_log:
-        ax.set_yscale("log")
+        if draw_xs:
+            step = max(1, len(draw_xs) // 12)
+            tick_positions = [0] + draw_xs[::step]
+            tick_positions = list(dict.fromkeys(tick_positions))
+            ax.set_xticks(tick_positions)
+            ax.set_xticklabels([f"{int(v)}" for v in tick_positions], rotation=0, ha="center")
+            ax.set_xlim(left=0, right=max(draw_xs) + width)
+        else:
+            ax.xaxis.set_major_locator(MaxNLocator(8, integer=True))
+            ax.set_xlim(left=0.0)
+
     if x_log:
         ax.set_xscale("log")
-    fig.suptitle(title)
-    plt.tight_layout()
+        sf = ScalarFormatter()
+        sf.set_scientific(False)
+        sf.set_useOffset(False)
+        ax.xaxis.set_major_formatter(sf)
+
+    if y_log:
+        ax.set_yscale("log")
+
+    if not y_log:
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _pos: "" if abs(y) < 1e-9 else format_thousands_dot(y)))
+
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    if raw_min is not None and raw_max is not None:
+        fig.text(0.5, 0.015, f"min: {raw_min:.2f}   max: {raw_max:.2f}", ha="center", va="bottom", fontsize=9, color="#0f172a")
+    plt.tight_layout(rect=[0.006, 0.02, 0.995, 0.985])
     plt.savefig(out_file, dpi=150)
     plt.close(fig)
 
@@ -398,15 +539,11 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bins", type=int, default=50)
     parser.add_argument("--quantile-rel-err", type=float, default=0.02)
+    parser.add_argument("--bound-mode", choices=["hard_cap", "two_stage_iqr", "coverage_quantile"], default="two_stage_iqr")
+    parser.add_argument("--coverage-quantile", type=float, default=DEFAULT_COVERAGE_QUANTILE)
     parser.add_argument("--day", default="latest")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
-
-    plt.rc('font', size=12)
-    plt.rc('axes', labelsize=12, titlesize=12)
-    plt.rc('legend', fontsize=10)
-    plt.rc('xtick', labelsize=9)
-    plt.rc('ytick', labelsize=9)
 
     tmpdir = tempfile.mkdtemp(prefix="histograms_")
     spark = build_spark()
@@ -469,7 +606,13 @@ def main():
         # materialize once to avoid repeated lineage recompute across quantiles/splits/histograms
         _ = working_df.count()
 
-        bounds = auto_outlier_bounds(working_df, needed_target_features, rel_err=args.quantile_rel_err)
+        bounds = auto_outlier_bounds(
+            working_df,
+            needed_target_features,
+            rel_err=args.quantile_rel_err,
+            bound_mode=args.bound_mode,
+            coverage_quantile=args.coverage_quantile,
+        )
         if not bounds:
             print(f"skip {dataset}: no usable numeric features after outlier profiling")
             working_df.unpersist()
@@ -489,6 +632,7 @@ def main():
             working_df.unpersist()
             continue
 
+        raw_extreme_bounds = compute_data_bounds(working_df, needed_features)
         peak_bounds = compute_data_bounds(
             peak_df,
             needed_features,
@@ -507,8 +651,12 @@ def main():
                 xs, ys, width = in_range_map[feature_name]
                 inrange_file = os.path.join(chart_dir, "inrange.png")
                 inrange_key = f"{args.day}/{dataset}/{feature_folder}/inrange.png"
-                inrange_title = f"{dataset} - {feature_name} in-range ({args.mode}, random {int(args.sample_fraction * 100)}%)"
-                plot_single_feature(xs, ys, width, inrange_file, inrange_title, feature_name, y_log=False, x_log=False, prefix="IN_RANGE")
+                inrange_title = f"{humanize_dataset_name(dataset)}"
+                raw_min, raw_max = raw_extreme_bounds.get(feature_name, (None, None))
+                plot_single_feature(
+                    xs, ys, width, inrange_file, inrange_title, feature_name,
+                    y_log=False, x_log=False, prefix="IN_RANGE", raw_min=raw_min, raw_max=raw_max
+                )
                 upload_with_aws(inrange_file, args.bucket, inrange_key)
                 uploaded_count += 1
 
@@ -516,8 +664,12 @@ def main():
                 pxs, pys, pwidth = peak_map[feature_name]
                 peak_file = os.path.join(chart_dir, "peak.png")
                 peak_key = f"{args.day}/{dataset}/{feature_folder}/peak.png"
-                peak_title = f"{dataset} - {feature_name} peak ({args.mode}, random {int(args.sample_fraction * 100)}%)"
-                plot_single_feature(pxs, pys, pwidth, peak_file, peak_title, feature_name, y_log=False, x_log=True, prefix="PEAK", style="line")
+                peak_title = f"{humanize_dataset_name(dataset)}"
+                raw_min, raw_max = raw_extreme_bounds.get(feature_name, (None, None))
+                plot_single_feature(
+                    pxs, pys, pwidth, peak_file, peak_title, feature_name,
+                    y_log=False, x_log=True, prefix="PEAK", style="line", raw_min=raw_min, raw_max=raw_max
+                )
                 upload_with_aws(peak_file, args.bucket, peak_key)
                 uploaded_count += 1
 

@@ -188,8 +188,14 @@
 
       function buildChartUrls(dataset, feature, datasetPathOverride = "") {
         const base = state.baseUrl.replace(/\/$/, "");
+        const day = (state.day || "").replace(/^\/+|\/+$/g, "");
         const datasetPath = datasetPathOverride || dataset;
-        const root = `${base}/${datasetPath}/${feature}`;
+        const isTestPath =
+          datasetPath === "test" || datasetPath.startsWith("test/");
+        const pathParts = isTestPath
+          ? [datasetPath, feature]
+          : [day, datasetPath, feature];
+        const root = `${base}/${pathParts.filter(Boolean).join("/")}`;
         return {
           inrange: `${root}/inrange.png`,
           peak: `${root}/peak.png`,
@@ -296,49 +302,52 @@
         try {
           const discovered = {};
           const discoveredTestSeeds = {};
+          const dayPrefix = (state.day || "").replace(/^\/+|\/+$/g, "");
+          const scopedRoot = dayPrefix ? `${dayPrefix}/` : "";
 
-          const rootPrefixes = await listPrefixes("");
+          const rootPrefixes = await listPrefixes(scopedRoot);
           for (const rootPrefix of rootPrefixes) {
-            const rootName = rootPrefix.replace(/\/$/, "");
+            const rootName = rootPrefix
+              .replace(scopedRoot, "")
+              .replace(/\/$/, "");
             if (!rootName) continue;
 
-            if (rootName === "test") {
-              const seedPrefixes = await listPrefixes("test/");
-              for (const seedPrefix of seedPrefixes) {
-                const seedName = seedPrefix
-                  .replace("test/", "")
-                  .replace(/\/$/, "");
-                if (!seedName) continue;
+            const featurePrefixes = await listPrefixes(rootPrefix);
+            const features = featurePrefixes
+              .map((fp) => fp.replace(rootPrefix, "").replace(/\/$/, ""))
+              .filter(Boolean)
+              .sort();
+            if (features.length > 0) discovered[rootName] = features;
+          }
 
-                const datasetPrefixes = await listPrefixes(seedPrefix);
-                const datasetsForSeed = {};
+          const testRoot = "test/";
+          const seedPrefixes = await listPrefixes(testRoot);
+          for (const seedPrefix of seedPrefixes) {
+            const seedName = seedPrefix
+              .replace(testRoot, "")
+              .replace(/\/$/, "");
+            if (!seedName) continue;
 
-                for (const dsPrefix of datasetPrefixes) {
-                  const dsName = dsPrefix
-                    .replace(seedPrefix, "")
-                    .replace(/\/$/, "");
-                  if (!dsName) continue;
+            const datasetPrefixes = await listPrefixes(seedPrefix);
+            const datasetsForSeed = {};
 
-                  const featurePrefixes = await listPrefixes(dsPrefix);
-                  const features = featurePrefixes
-                    .map((fp) => fp.replace(dsPrefix, "").replace(/\/$/, ""))
-                    .filter(Boolean)
-                    .sort();
+            for (const dsPrefix of datasetPrefixes) {
+              const dsName = dsPrefix
+                .replace(seedPrefix, "")
+                .replace(/\/$/, "");
+              if (!dsName) continue;
 
-                  if (features.length > 0) datasetsForSeed[dsName] = features;
-                }
-
-                if (Object.keys(datasetsForSeed).length > 0) {
-                  discoveredTestSeeds[seedName] = datasetsForSeed;
-                }
-              }
-            } else {
-              const featurePrefixes = await listPrefixes(rootPrefix);
+              const featurePrefixes = await listPrefixes(dsPrefix);
               const features = featurePrefixes
-                .map((fp) => fp.replace(rootPrefix, "").replace(/\/$/, ""))
+                .map((fp) => fp.replace(dsPrefix, "").replace(/\/$/, ""))
                 .filter(Boolean)
                 .sort();
-              if (features.length > 0) discovered[rootName] = features;
+
+              if (features.length > 0) datasetsForSeed[dsName] = features;
+            }
+
+            if (Object.keys(datasetsForSeed).length > 0) {
+              discoveredTestSeeds[seedName] = datasetsForSeed;
             }
           }
 
@@ -350,11 +359,10 @@
             Object.keys(discovered).length > 0 ||
             Object.keys(discoveredTestSeeds).length > 0
           ) {
-            els.status.textContent = "Feature list refreshed (MinIO)";
+            els.status.textContent = `Feature list refreshed (MinIO: ${scopedRoot || "/"}; test: /test/)`;
             els.status.className = "status status-green";
           } else {
-            els.status.textContent =
-              "No MinIO prefixes found, showing defaults";
+            els.status.textContent = `No MinIO prefixes found under ${scopedRoot || "/"}, showing defaults`;
             els.status.className = "status status-red";
           }
         } catch (_e) {
@@ -552,7 +560,7 @@
       }
     </style>
     <script>
-      const THEME_KEY = "foxai_histogram_theme_v1";
+      const THEME_KEY = "foxai_shared_theme_v1";
       const themeToggle = document.getElementById("themeToggle");
       function applyTheme(mode) {
         const dark = mode === "dark";
@@ -562,21 +570,45 @@
           themeToggle.title = dark
             ? "Switch to light mode"
             : "Switch to dark mode";
+          themeToggle.setAttribute("aria-label", themeToggle.title);
         }
       }
+      function currentThemeMode() {
+        return document.body.classList.contains("dark-mode") ? "dark" : "light";
+      }
+      function updateThemeNavLinks() {
+        document.querySelectorAll(".nav-actions a").forEach((a) => {
+          const href = a.getAttribute("href");
+          if (!href) return;
+          const url = new URL(href, location.href);
+          url.searchParams.set("theme", currentThemeMode());
+          const name = url.pathname.split("/").pop();
+          a.href = `${name}${url.search}`;
+        });
+      }
       function loadTheme() {
-        let saved;
+        const params = new URLSearchParams(location.search);
+        let saved = params.get("theme");
+        if (!saved) {
+          try {
+            saved = localStorage.getItem(THEME_KEY);
+          } catch (_) {}
+        }
+        const mode = saved === "dark" ? "dark" : "light";
+        applyTheme(mode);
         try {
-          saved = localStorage.getItem(THEME_KEY);
+          localStorage.setItem(THEME_KEY, mode);
         } catch (_) {}
-        applyTheme(saved === "dark" ? "dark" : "light");
+        updateThemeNavLinks();
       }
       function toggleTheme() {
         const dark = !document.body.classList.contains("dark-mode");
-        applyTheme(dark ? "dark" : "light");
+        const mode = dark ? "dark" : "light";
+        applyTheme(mode);
         try {
-          localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+          localStorage.setItem(THEME_KEY, mode);
         } catch (_) {}
+        updateThemeNavLinks();
       }
       if (themeToggle) themeToggle.addEventListener("click", toggleTheme);
       loadTheme();

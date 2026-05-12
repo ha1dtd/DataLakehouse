@@ -48,6 +48,6 @@ with DAG(dag_id="silver_histograms_20pct_new", default_args=default_args, schedu
         --conf spark.sql.catalog.silver_catalog.type=hadoop \
         --conf spark.sql.catalog.silver_catalog.warehouse=s3a://silver/lakehouse/ \
         {S3A_CONF} \
-        {SCRIPT_BASE}/silver_histograms_new.py --mode full --bucket histogram --sample-fraction 0.2 --seed 42 --bins 40 --quantile-rel-err 0.03 --day 2026-05-05
+        {SCRIPT_BASE}/silver_histograms_new.py --mode full --bucket histogram --sample-fraction 0.2 --seed 42 --bins 40 --quantile-rel-err 0.03 --day {{{{ ds }}}}
 """
     )

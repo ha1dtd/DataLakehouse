@@ -170,6 +170,70 @@ Single source of truth for AI context. Future sessions MUST read this file to ge
 - [ ] Parameterize remaining hardcoded runtime config values in active DAG/scripts where still applicable
 - [ ] If strict runtime target becomes blocking, prioritize infra/I/O improvements (network bandwidth, MinIO throughput, write parallelism strategy)
 
+## 7. Upcoming Feature Tracks (Supervisor Review Pending)
+
+These are newly identified roadmap items from `FoxAI_Feature_Approach_Report.docx`. Keep existing roadmap items above active; these are additional upcoming tracks, not replacements.
+
+### 7.1 Licensing System
+
+- Goal: enforce paid FoxAI usage inside the core product, not through bypassable plugin-only controls.
+- Confirmed business direction:
+  - subscription term: 1 year
+  - commercial model: node-based tiers
+  - current tier examples: Basic = 3 DataNodes, Pro = 7 DataNodes, Enterprise = TBD
+  - protected scope: FoxAI configuration logic, pipeline scripts, and architecture; not open-source dependencies themselves
+- Candidate implementation approaches under review:
+  - online license validation server
+  - offline signed license file bound to customer environment
+  - hybrid offline license with periodic online check-in
+- Important unresolved decisions:
+  - whether military/police deployments must support fully offline / air-gapped operation
+  - whether FoxAI will provide a customer portal for renewals/license management
+  - grace-period policy for temporary connectivity loss
+  - whether node-count enforcement is hard-block vs warning-first
+- Current implication for engineering: any licensing design must be embedded in protected core runtime and aligned with packaging/distribution choices.
+
+### 7.2 Packaging, Protection, and Plugin SDK
+
+- Goal: ship FoxAI in a way that is easy to install, protects core IP, and still allows customer extensions.
+- Confirmed direction:
+  - protected core is required
+  - plugin system is required
+  - binary-style protection is the current preferred direction
+  - `.exe` requirement exists in discussion but does not currently fit direct Linux cluster deployment without clarification
+  - Docker is still pending supervisor confirmation
+- Proposed protection/distribution options being considered:
+  - compile critical Python core to binary via `Cython` / `Nuitka`
+  - Linux installer / managed deployment packaging for the cluster
+  - optional lightweight Windows admin console for remote cluster management
+  - Docker image distribution as a later/alternative channel if approved
+- Proposed plugin extension types:
+  - `CustomTransformer`
+  - `CustomConnector`
+  - `CustomAggregator`
+  - `CustomValidator`
+- Recommended working direction from the feature report:
+  - binary-protect the critical core
+  - build Linux-oriented installer/distribution path
+  - define and publish a plugin SDK with stable interfaces
+  - treat Windows `.exe` as management tooling rather than full server runtime unless requirements change
+- Important unresolved decisions:
+  - whether `.exe` is for admin console vs actual runtime
+  - whether Docker is approved
+  - target server OS assumptions
+  - which plugin types belong in v1 (recommended start: `CustomTransformer` only)
+  - whether plugins require FoxAI review/approval before deployment
+
+### 7.3 Real-time Processing (Later Priority)
+
+- This remains a future track and does NOT replace current batch/medallion work.
+- Target use case: drone/UAV live video + sensor streaming with near-real-time response.
+- Priority status: explicitly later than current release scope.
+- Architectural note:
+  - this is fundamentally different from current batch taxi/domain processing
+  - target latency is sub-second, ideally under 200 ms
+  - future design choices should avoid blocking this path, but no immediate implementation should displace current pipeline stabilization and packaging/licensing priorities
+
 ---
 
 **Session log policy: keep only concise context that helps next-session startup.**
