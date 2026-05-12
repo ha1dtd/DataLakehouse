@@ -84,13 +84,13 @@ def create_namespace_if_needed(catalog: str, namespace: str):
 
 def process_taxi_domain(domain_name: str, domain_cfg: dict):
     bronze_bucket = domain_cfg.get("bronze_bucket", "bronze")
-    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/domains/{domain_name}/bronze")
+    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/{domain_name}")
     silver_namespace = domain_cfg.get("silver_namespace", domain_name)
     datasets = domain_cfg.get("taxi", {}).get("datasets", {})
 
     create_namespace_if_needed("silver_catalog", silver_namespace)
 
-    yellow_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/yellow/*/*.parquet")
+    yellow_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/*yellow*.parquet")
     if yellow_paths:
         groups = {"legacy": [], "modern": [], "intermediate": []}
         for path in yellow_paths:
@@ -188,7 +188,7 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
             yellow_silver.writeTo(f"silver_catalog.{silver_namespace}.{datasets.get('yellow', {}).get('silver_table', 'yellow_taxi')}").createOrReplace()
             print(f"### Wrote silver_catalog.{silver_namespace}.yellow_taxi")
 
-    green_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/green/*/*.parquet")
+    green_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/*green*.parquet")
     if green_paths:
         green_raw = read_and_merge_varying_schemas(green_paths)
         green_silver = green_raw.select(
@@ -232,7 +232,7 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
         green_silver.writeTo(f"silver_catalog.{silver_namespace}.{datasets.get('green', {}).get('silver_table', 'green_taxi')}").createOrReplace()
         print(f"### Wrote silver_catalog.{silver_namespace}.green_taxi")
 
-    fhv_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/fhv/*/*.parquet")
+    fhv_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/*fhv*.parquet")
     if fhv_paths:
         fhv_raw = read_and_merge_varying_schemas(fhv_paths)
         fhv_silver = fhv_raw.select(
@@ -256,7 +256,7 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
         fhv_silver.writeTo(f"silver_catalog.{silver_namespace}.{datasets.get('fhv', {}).get('silver_table', 'fhv_trip')}").createOrReplace()
         print(f"### Wrote silver_catalog.{silver_namespace}.fhv_trip")
 
-    fhvhv_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/fhvhv/*/*.parquet")
+    fhvhv_paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/*fhvhv*.parquet")
     if fhvhv_paths:
         fhvhv_raw = read_and_merge_varying_schemas(fhvhv_paths)
         fhvhv_silver = fhvhv_raw.select(
@@ -304,7 +304,7 @@ def process_taxi_domain(domain_name: str, domain_cfg: dict):
 
 def process_non_taxi_domain(domain_name: str, domain_cfg: dict):
     bronze_bucket = domain_cfg.get("bronze_bucket", "bronze")
-    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/domains/{domain_name}/bronze")
+    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/{domain_name}")
     silver_namespace = domain_cfg.get("silver_namespace", domain_name)
     topics = domain_cfg.get("topics", {})
 
@@ -312,7 +312,7 @@ def process_non_taxi_domain(domain_name: str, domain_cfg: dict):
 
     for topic_name, topic_cfg in topics.items():
         silver_table = topic_cfg.get("silver_table", f"{topic_name}_silver")
-        paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/{topic_name}/*/*.parquet")
+        paths = glob_paths(f"s3a://{bronze_bucket}/{bronze_prefix}/*.parquet")
         if not paths:
             continue
 

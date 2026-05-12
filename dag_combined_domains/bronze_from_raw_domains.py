@@ -48,7 +48,7 @@ with open(DOMAIN_REGISTRY_FILE, "r", encoding="utf-8") as f:
 
 domains = domain_registry.get("domains", {})
 
-raw_df = spark.read.table("raw_catalog.control.raw_registry") \
+raw_df = spark.read.table("raw_catalog.registry.raw_registry") \
     .filter((col("status") == "landed") & (col("file_type").isin("json", "csv", "xml", "parquet")))
 
 processed_success_df = spark.read.table("bronze_catalog.control.raw_file_registry") \
@@ -77,11 +77,11 @@ skipped_already_bronzed = raw_df.count() - len(rows)
 for row in rows:
     domain_cfg = domains.get(row["domain"], {})
     bronze_bucket = domain_cfg.get("bronze_bucket", "bronze")
-    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/domains/{row['domain']}/bronze")
+    bronze_prefix = domain_cfg.get("bronze_prefix", f"lakehouse/{row['domain']}")
 
     raw_uri = f"s3a://{row['bucket']}/{row['object_key']}"
     base_name = os.path.splitext(row['file_name'])[0]
-    bronze_object_key = f"{bronze_prefix}/{row['topic']}/{row['source_name']}/{base_name}.parquet"
+    bronze_object_key = f"{bronze_prefix}/{base_name}.parquet"
     bronze_uri = f"s3a://{bronze_bucket}/{bronze_object_key}"
     status = "success"
     error_message = None

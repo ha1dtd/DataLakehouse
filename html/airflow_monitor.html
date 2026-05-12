@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FoxAI Analytics Console - Airflow Monitor</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../image copy.png" />
+    <link rel="stylesheet" href="./histogram_chat_viewer.css" />
+    <link rel="stylesheet" href="./airflow_monitor.css" />
+    <link rel="stylesheet" href="./_dark_mode.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo-wrap">
+            <img class="brand-logo" src="../image copy.png" alt="FoxAI logo" />
+          </div>
+          <div class="title">FoxAI Analytics Console</div>
+        </div>
+
+        <div class="actions">
+          <div class="nav-actions">
+            <a class="nav-btn" href="./histogram_chat_viewer.html"
+              >Histogram View</a
+            >
+            <a class="nav-btn active" href="./airflow_monitor.html"
+              >Airflow Monitor</a
+            >
+          </div>
+          <button id="loadDags" class="refresh-btn">Load DAGs</button>
+        </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="sourcePanel">
+            <span>Source</span><span>▾</span>
+          </button>
+          <div id="sourcePanel" class="features">
+            <div class="controls compact">
+              <div>
+                <label for="apiBase">Airflow API base</label>
+                <input id="apiBase" value="http://192.168.100.66:8081/api/v1" />
+              </div>
+              <div>
+                <label for="apiUser">Username</label>
+                <input id="apiUser" value="admin" />
+              </div>
+              <div>
+                <label for="apiPass">Password</label>
+                <input id="apiPass" type="password" value="admin" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="dagListPanel">
+            <span>DAGs</span><span>▾</span>
+          </button>
+          <div id="dagListPanel" class="features open">
+            <input id="dagSearch" placeholder="Search by name or dag_id" />
+            <div id="dagList"></div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="main">
+        <div class="main-top">
+          <div id="headerTitle"><strong>Select a DAG</strong></div>
+          <div id="status" class="status"></div>
+        </div>
+        <div class="main-body">
+          <div class="monitor-layout">
+            <div class="monitor-top">
+              <div class="card runs-card">
+                <h3>Recent Runs</h3>
+                <div id="runList"></div>
+              </div>
+              <div class="card details-card">
+                <div class="details-header">
+                  <h3>Run Summary</h3>
+                  <div class="run-summary" id="runSummary"></div>
+                  <div class="task-actions-bar">
+                    <button
+                      id="triggerDag"
+                      class="action-btn action-btn-trigger"
+                      title="Trigger a new DAG run"
+                    >
+                      <span class="btn-icon">▶</span
+                      ><span class="btn-label">Trigger DAG</span>
+                    </button>
+                    <button
+                      id="clearTasks"
+                      class="action-btn action-btn-clear"
+                      title="Clear all task states"
+                    >
+                      <span class="btn-icon">↺</span
+                      ><span class="btn-label">Clear Tasks</span>
+                    </button>
+                    <button
+                      id="markSuccess"
+                      class="action-btn action-btn-success"
+                      title="Mark selected task as success"
+                    >
+                      <span class="btn-icon">✓</span
+                      ><span class="btn-label">Mark Success</span>
+                    </button>
+                    <button
+                      id="markFailed"
+                      class="action-btn action-btn-fail"
+                      title="Mark selected task as failed"
+                    >
+                      <span class="btn-icon">✗</span
+                      ><span class="btn-label">Mark Failed</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="taskFlow" class="task-flow-container"></div>
+              </div>
+            </div>
+            <div class="card log-card">
+              <div class="log-header">
+                <h3>Task Logs</h3>
+                <div class="log-task-info">
+                  <span id="logTaskName">-</span>
+                  <span id="logTaskState" class="log-task-state">-</span>
+                </div>
+              </div>
+              <div id="logBox" class="log-box">No log loaded.</div>
+              <div id="persistDebug" class="persist-debug"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <button
+      id="themeToggle"
+      class="theme-toggle"
+      title="Toggle dark mode"
+      aria-label="Toggle dark mode"
+    >
+      ☀️
+    </button>
+
+    <script>
+      const els = {
+        apiBase: document.getElementById("apiBase"),
+        apiUser: document.getElementById("apiUser"),
+        apiPass: document.getElementById("apiPass"),
+        loadDags: document.getElementById("loadDags"),
+        dagSearch: document.getElementById("dagSearch"),
+        dagList: document.getElementById("dagList"),
+        runList: document.getElementById("runList"),
+        runSummary: document.getElementById("runSummary"),
+        taskFlow: document.getElementById("taskFlow"),
+        logBox: document.getElementById("logBox"),
+        status: document.getElementById("status"),
+        headerTitle: document.getElementById("headerTitle"),
+        persistDebug: document.getElementById("persistDebug"),
+        triggerDag: document.getElementById("triggerDag"),
+        clearTasks: document.getElementById("clearTasks"),
+        markSuccess: document.getElementById("markSuccess"),
+        markFailed: document.getElementById("markFailed"),
+        themeToggle: document.getElementById("themeToggle"),
+      };
+
+      let activeDag = null;
+      let activeRun = null;
+      let activeTask = null;
+      let activeTryNumber = 1;
+      let dagsCache = [];
+      let tasksCache = [];
+      let autoRunTimer = null;
+      let liveRefreshTimer = null;
+      let isLiveRefreshInFlight = false;
+      let lastStateHash = "";
+      const LS_KEY = "foxai_airflow_monitor_state_v1";
+      const THEME_KEY = "foxai_airflow_monitor_theme_v1";
+      const STATE_API = "http://127.0.0.1:9010/state?key=default";
+
+      function applyTheme(mode) {
+        const dark = mode === "dark";
+        document.body.classList.toggle("dark-mode", dark);
+        if (els.themeToggle) {
+          els.themeToggle.textContent = dark ? "🌙" : "☀️";
+          els.themeToggle.title = dark
+            ? "Switch to light mode"
+            : "Switch to dark mode";
+          els.themeToggle.setAttribute("aria-label", els.themeToggle.title);
+        }
+      }
+
+      function loadTheme() {
+        let saved = null;
+        try {
+          saved = localStorage.getItem(THEME_KEY);
+        } catch (_e) {}
+        applyTheme(saved === "dark" ? "dark" : "light");
+      }
+
+      function toggleTheme() {
+        const dark = !document.body.classList.contains("dark-mode");
+        const mode = dark ? "dark" : "light";
+        applyTheme(mode);
+        try {
+          localStorage.setItem(THEME_KEY, mode);
+        } catch (_e) {}
+      }
+
+      function snapshotState() {
+        return {
+          apiBase: els.apiBase.value || "",
+          apiUser: els.apiUser.value || "",
+          apiPass: els.apiPass.value || "",
+          dagSearch: els.dagSearch.value || "",
+          activeDag,
+          activeRun,
+          activeTask,
+          dagsCache,
+          headerTitleHtml: els.headerTitle.innerHTML || "",
+          runListHtml: els.runList.innerHTML || "",
+          runSummaryHtml: els.runSummary.innerHTML || "",
+          taskFlowHtml: els.taskFlow.innerHTML || "",
+          logText: els.logBox.textContent || "",
+        };
+      }
+
+      function encodeStateForUrl(obj) {
+        try {
+          return encodeURIComponent(
+            btoa(unescape(encodeURIComponent(JSON.stringify(obj)))),
+          );
+        } catch (_e) {
+          return "";
+        }
+      }
+
+      function decodeStateFromUrl(raw) {
+        try {
+          return JSON.parse(
+            decodeURIComponent(escape(atob(decodeURIComponent(raw)))),
+          );
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      let stateReady = false;
+      let lastSaveSource = "none";
+      let lastRestoreSource = "none";
+
+      function updatePersistDebug(reason = "") {
+        if (!els.persistDebug) return;
+        const ts = new Date().toISOString();
+        els.persistDebug.textContent = `persist | save:${lastSaveSource} | restore:${lastRestoreSource} | dag:${activeDag || "-"} | run:${activeRun || "-"} | ${reason} | ${ts}`;
+      }
+
+      function hasMeaningfulState(s) {
+        return Boolean(
+          (s.activeDag && String(s.activeDag).trim()) ||
+          (Array.isArray(s.dagsCache) && s.dagsCache.length > 0) ||
+          (s.runListHtml && s.runListHtml.trim()),
+        );
+      }
+
+      async function saveState(force = false, source = "unknown") {
+        const snap = snapshotState();
+        const meaningful = hasMeaningfulState(snap);
+        if (!force && !stateReady) return;
+        if (!force && !meaningful) return;
+        if (force && !meaningful && lastRestoreSource === "none") return;
+        const payload = JSON.stringify(snap);
+        if (!force && payload === lastStateHash) return;
+
+        try {
+          await fetch(STATE_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: "default", state: snap }),
+          });
+          lastSaveSource = `${source}->backend`;
+          lastStateHash = payload;
+        } catch (_e) {
+          try {
+            localStorage.setItem(LS_KEY, payload);
+            lastSaveSource = `${source}->localStorage`;
+            lastStateHash = payload;
+          } catch (_e2) {}
+        }
+
+        updatePersistDebug(force ? "saved(force)" : "saved");
+      }
+
+      async function loadState() {
+        try {
+          const res = await fetch(STATE_API);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.state) {
+              lastRestoreSource = "backend";
+              return data.state;
+            }
+          }
+        } catch (_e) {}
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          if (raw) {
+            lastRestoreSource = "localStorage";
+            return JSON.parse(raw);
+          }
+        } catch (_e) {}
+        lastRestoreSource = "none";
+        return null;
+      }
+
+      function authHeader() {
+        const user = (els.apiUser.value || "").trim();
+        const pass = (els.apiPass.value || "").trim();
+        return "Basic " + btoa(`${user}:${pass}`);
+      }
+
+      function normalizedBaseUrl() {
+        return (els.apiBase.value || "").trim().replace(/\/$/, "");
+      }
+
+      function fetchFailureHint(err) {
+        const msg = String(err?.message || err);
+        if (msg.includes("401"))
+          return "Unauthorized (401): check username/password or API auth backend.";
+        if (msg.includes("403"))
+          return "Forbidden (403): user lacks permissions.";
+        if (msg.includes("Failed to fetch"))
+          return "Network/CORS blocked: check tunnel, API URL, and browser CORS.";
+        return msg;
+      }
+
+      async function api(path, options = {}) {
+        const base = normalizedBaseUrl();
+        const url = base + path;
+        const method = options.method || "GET";
+        const headers = {
+          Authorization: authHeader(),
+          Accept: "application/json",
+          ...(options.headers || {}),
+        };
+        if (options.body && !headers["Content-Type"]) {
+          headers["Content-Type"] = "application/json";
+        }
+        let res;
+        try {
+          res = await fetch(url, {
+            method,
+            headers,
+            body: options.body,
+          });
+        } catch (err) {
+          throw new Error(`Fetch failed for ${url}. ${fetchFailureHint(err)}`);
+        }
+
+        if (!res.ok) {
+          let body = "";
+          try {
+            body = await res.text();
+          } catch (_e) {}
+          throw new Error(
+            `${res.status} ${res.statusText} at ${url}${body ? ` | ${body.slice(0, 220)}` : ""}`,
+          );
+        }
+
+        if (options.expectText) return res.text();
+        return res.json();
+      }
+
+      function setStatus(msg, ok = false) {
+        els.status.textContent = msg;
+        els.status.className = ok ? "status status-green" : "status";
+        console.log("[airflow-monitor]", msg);
+      }
+
+      function renderDags() {
+        const q = (els.dagSearch.value || "").trim().toLowerCase();
+        const items = q
+          ? dagsCache.filter((d) =>
+              `${d.dag_id || ""} ${d.dag_display_name || ""}`
+                .toLowerCase()
+                .includes(q),
+            )
+          : dagsCache;
+
+        saveState(false, "renderDags");
+
+        els.dagList.innerHTML = "";
+        items.forEach((d) => {
+          const row = document.createElement("div");
+          row.className = "dag-item";
+
+          const name = document.createElement("button");
+          name.className = "dag-name-btn";
+          name.textContent = d.dag_display_name || d.dag_id;
+          name.title = d.dag_id;
+          name.onclick = () => loadRuns(d.dag_id);
+
+          const sw = document.createElement("label");
+          sw.className = "dag-switch";
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.checked = !d.is_paused;
+          const slider = document.createElement("span");
+          slider.className = "dag-slider";
+          toggle.onchange = async () => {
+            try {
+              await api(`/dags/${encodeURIComponent(d.dag_id)}`, {
+                method: "PATCH",
+                body: JSON.stringify({ is_paused: !toggle.checked }),
+              });
+              d.is_paused = !toggle.checked;
+              setStatus(
+                `DAG ${d.dag_id} ${d.is_paused ? "disabled" : "enabled"}`,
+                true,
+              );
+            } catch (e) {
+              toggle.checked = !toggle.checked;
+              setStatus(`Toggle DAG failed: ${e.message}`);
+            }
+          };
+          sw.appendChild(toggle);
+          sw.appendChild(slider);
+
+          row.appendChild(name);
+          row.appendChild(sw);
+          els.dagList.appendChild(row);
+        });
+      }
+
+      async function loadDags() {
+        setStatus("Loading DAGs...");
+        try {
+          const data = await api("/dags?limit=200");
+          dagsCache = data.dags || [];
+          renderDags();
+          saveState(false, "loadDags");
+          setStatus("DAGs loaded", true);
+        } catch (e) {
+          setStatus(`Load DAGs failed: ${e.message}`);
+        }
+      }
+
+      function runLabel(r) {
+        const ts = r.start_date || r.execution_date || r.logical_date || "-";
+        const shortTs = String(ts).replace("T", " ").replace("+00:00", "");
+        return `${shortTs} ${String(r.state || "").toUpperCase()}`.trim();
+      }
+
+      function applyRunStateClass(el, state) {
+        el.classList.remove("run-btn-success", "run-btn-failed");
+        const s = String(state || "").toLowerCase();
+        if (s === "success") el.classList.add("run-btn-success");
+        if (["failed", "upstream_failed"].includes(s))
+          el.classList.add("run-btn-failed");
+      }
+
+      async function loadRuns(dagId, opts = {}) {
+        const { silent = false } = opts;
+        activeDag = dagId;
+        saveState(false, "loadRuns-start");
+        els.headerTitle.innerHTML = `<strong>${dagId}</strong>`;
+        if (!silent) setStatus("Loading runs...");
+        try {
+          const data = await api(
+            `/dags/${encodeURIComponent(dagId)}/dagRuns?limit=20&order_by=-start_date`,
+          );
+          els.runList.innerHTML = "";
+          (data.dag_runs || []).forEach((r) => {
+            const runId = r.dag_run_id || r.run_id || r.id || null;
+            if (!runId) return;
+            const b = document.createElement("button");
+            b.className = "item-btn";
+            b.dataset.runId = runId;
+            applyRunStateClass(b, r.state);
+            b.textContent = runLabel(r);
+            b.title = runId;
+            b.onclick = () => loadRunDetail(dagId, runId);
+            els.runList.appendChild(b);
+          });
+          if (!silent) setStatus("Runs loaded", true);
+        } catch (e) {
+          if (!silent) setStatus(`Load runs failed: ${e.message}`);
+        }
+      }
+
+      async function loadRunDetail(dagId, runId, opts = {}) {
+        if (!runId || runId === "undefined" || runId === "null") {
+          setStatus("Run detail failed: invalid run id", false);
+          els.logBox.textContent = "Load log failed: invalid run id";
+          return;
+        }
+        activeRun = runId;
+        saveState(false, "loadRunDetail-start");
+        setStatus("Loading run detail...");
+        try {
+          const run = await api(
+            `/dags/${encodeURIComponent(dagId)}/dagRuns/${encodeURIComponent(runId)}`,
+          );
+          const ti = await api(
+            `/dags/${encodeURIComponent(dagId)}/dagRuns/${encodeURIComponent(runId)}/taskInstances?limit=500`,
+          );
+          const tasks = ti.task_instances || [];
+          tasksCache = tasks;
+
+          const done = tasks.filter((t) =>
+            ["success", "failed", "upstream_failed", "skipped"].includes(
+              t.state,
+            ),
+          ).length;
+          const total = tasks.length || 1;
+          const pct = Math.round((done / total) * 100);
+
+          const startMs = run.start_date ? Date.parse(run.start_date) : NaN;
+          const endMs = run.end_date ? Date.parse(run.end_date) : Date.now();
+          const durationSec =
+            Number.isFinite(startMs) && Number.isFinite(endMs)
+              ? Math.max(0, Math.round((endMs - startMs) / 1000))
+              : null;
+          const fmtDur = (s) => {
+            if (s === null) return "-";
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            return `${h}h ${m}m ${sec}s`;
+          };
+
+          els.runSummary.innerHTML = `
+            <div class="summary-item">
+              <span class="summary-label">Run ID:</span>
+              <span class="summary-value">${run.run_id}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">State:</span>
+              <span class="summary-value summary-state-${run.state}">${run.state || "-"}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Duration:</span>
+              <span class="summary-value">${fmtDur(durationSec)}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Tasks:</span>
+              <span class="summary-value">${done}/${tasks.length} (${pct}%)</span>
+            </div>
+          `;
+
+          renderTaskFlow(tasks, dagId, runId);
+
+          const byId = Object.fromEntries(tasks.map((t) => [t.task_id, t]));
+          const preferred =
+            (activeTask && byId[activeTask] ? byId[activeTask] : null) ||
+            tasks.find((t) => t.state === "running") ||
+            tasks[0];
+          if (preferred) {
+            activeTask = preferred.task_id;
+            activeTryNumber =
+              Number(preferred.try_number) > 0
+                ? Number(preferred.try_number)
+                : 1;
+            await loadTaskLog(dagId, runId, activeTask, activeTryNumber);
+          } else {
+            activeTask = null;
+            activeTryNumber = 1;
+            els.logBox.textContent = "No task instances.";
+          }
+          saveState(false, "loadRunDetail-done");
+          if (!silent) setStatus("Run detail loaded", true);
+        } catch (e) {
+          if (!silent) setStatus(`Run detail failed: ${e.message}`);
+        }
+      }
+
+      function getTaskStateClass(state) {
+        const s = String(state || "").toLowerCase();
+        if (s === "success") return "task-state-success";
+        if (s === "failed" || s === "upstream_failed")
+          return "task-state-failed";
+        if (s === "running") return "task-state-running";
+        if (s === "skipped") return "task-state-skipped";
+        if (s === "up_for_retry" || s === "up_for_reschedule")
+          return "task-state-pending";
+        return "task-state-none";
+      }
+
+      function getStateBadgeLabel(state) {
+        const s = String(state || "").toLowerCase();
+        if (s === "up_for_retry") return "RETRY";
+        if (s === "up_for_reschedule") return "RESCHED";
+        return (state || "NO_STATUS").toUpperCase();
+      }
+
+      function renderTaskFlow(tasks, dagId, runId) {
+        if (!tasks || tasks.length === 0) {
+          els.taskFlow.innerHTML =
+            '<div class="task-flow-empty">No task instances</div>';
+          return;
+        }
+        els.taskFlow.innerHTML = tasks
+          .map((t) => {
+            const stateClass = getTaskStateClass(t.state);
+            const isSelected = activeTask === t.task_id;
+            return `
+            <div class="task-node ${isSelected ? "task-selected" : ""}" 
+                 data-task-id="${t.task_id}" 
+                 data-state="${t.state || ""}">
+              <div class="task-header">
+                <span class="task-name">${t.task_id}</span>
+                <span class="task-state-badge ${stateClass}">${getStateBadgeLabel(t.state)}</span>
+              </div>
+              <div class="task-info">
+                <span class="task-duration">${t.duration ? (t.duration / 1000).toFixed(1) + "s" : "-"}</span>
+                <span class="task-try">Try #${t.try_number || 1}</span>
+              </div>
+              <div class="task-actions">
+                <button class="task-btn task-btn-select" title="Select task">
+                  <span class="btn-icon">▶</span><span class="btn-label">View Log</span>
+                </button>
+              </div>
+            </div>
+          `;
+          })
+          .join("");
+
+        els.taskFlow.querySelectorAll(".task-node").forEach((node) => {
+          const taskId = node.dataset.taskId;
+          node.querySelector(".task-btn-select").onclick = async (e) => {
+            e.stopPropagation();
+            activeTask = taskId;
+            activeTryNumber = 1;
+            document
+              .querySelectorAll(".task-node")
+              .forEach((n) => n.classList.remove("task-selected"));
+            node.classList.add("task-selected");
+            await loadTaskLog(dagId, runId, taskId, activeTryNumber);
+          };
+          node.onclick = async () => {
+            activeTask = taskId;
+            document
+              .querySelectorAll(".task-node")
+              .forEach((n) => n.classList.remove("task-selected"));
+            node.classList.add("task-selected");
+            const task = tasksCache.find((t) => t.task_id === taskId);
+            if (task) {
+              activeTryNumber =
+                Number(task.try_number) > 0 ? Number(task.try_number) : 1;
+              await loadTaskLog(dagId, runId, taskId, activeTryNumber);
+            }
+          };
+        });
+      }
+
+      async function refreshActiveRunButtonState() {
+        if (!activeDag || !activeRun) return;
+        try {
+          const run = await api(
+            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}`,
+          );
+          const btn = els.runList.querySelector(
+            `[data-run-id="${CSS.escape(activeRun)}"]`,
+          );
+          if (btn) {
+            btn.textContent = runLabel(run);
+            applyRunStateClass(btn, run.state);
+          }
+        } catch (_e) {}
+      }
+
+      async function startLiveRefresh() {
+        if (liveRefreshTimer) clearInterval(liveRefreshTimer);
+        liveRefreshTimer = setInterval(async () => {
+          if (!activeDag || isLiveRefreshInFlight) return;
+          isLiveRefreshInFlight = true;
+          try {
+            await loadRuns(activeDag, { silent: true });
+            if (activeRun) {
+              await loadRunDetail(activeDag, activeRun, { silent: true });
+              await refreshActiveRunButtonState();
+            }
+          } catch (_e) {
+          } finally {
+            isLiveRefreshInFlight = false;
+          }
+        }, 3000);
+      }
+
+      async function loadTaskLog(dagId, runId, taskId, tryNumber) {
+        const logTaskName = document.getElementById("logTaskName");
+        const logTaskState = document.getElementById("logTaskState");
+        if (logTaskName) logTaskName.textContent = taskId || "-";
+        try {
+          if (!runId || runId === "undefined" || runId === "null") {
+            throw new Error("invalid run id");
+          }
+          const base = normalizedBaseUrl();
+          const safeTry = Number(tryNumber) > 0 ? Number(tryNumber) : 1;
+          const url = `${base}/dags/${encodeURIComponent(dagId)}/dagRuns/${encodeURIComponent(runId)}/taskInstances/${encodeURIComponent(taskId)}/logs/${safeTry}`;
+          const res = await fetch(url, {
+            headers: { Authorization: authHeader() },
+          });
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const text = await res.text();
+          els.logBox.textContent = text;
+          const task = tasksCache.find((t) => t.task_id === taskId);
+          const stateClass = getTaskStateClass(task?.state);
+          if (logTaskState) {
+            logTaskState.textContent = getStateBadgeLabel(task?.state);
+            logTaskState.className = `log-task-state ${stateClass}`;
+          }
+        } catch (e) {
+          els.logBox.textContent = `Load log failed: ${e.message}`;
+          if (logTaskState) {
+            logTaskState.textContent = "ERROR";
+            logTaskState.className = "log-task-state task-state-none";
+          }
+        }
+      }
+
+      async function triggerDag() {
+        if (!activeDag) {
+          setStatus("Select a DAG first");
+          return;
+        }
+        setStatus("Triggering DAG...");
+        els.logBox.textContent = "Waiting for new run logs...";
+        try {
+          const out = await api(
+            `/dags/${encodeURIComponent(activeDag)}/dagRuns`,
+            {
+              method: "POST",
+              body: JSON.stringify({}),
+            },
+          );
+          setStatus("DAG triggered", true);
+
+          const triggeredRunId = out?.dag_run_id || out?.run_id || null;
+          await loadRuns(activeDag);
+
+          if (autoRunTimer) clearInterval(autoRunTimer);
+          autoRunTimer = setInterval(async () => {
+            try {
+              const runId =
+                triggeredRunId ||
+                ((
+                  await api(
+                    `/dags/${encodeURIComponent(activeDag)}/dagRuns?limit=1&order_by=-start_date`,
+                  )
+                ).dag_runs || [])[0]?.dag_run_id;
+              if (!runId) return;
+
+              await loadRunDetail(activeDag, runId, { silent: true });
+
+              const run = await api(
+                `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(runId)}`,
+              );
+              const runState = String(run?.state || "").toLowerCase();
+              if (["success", "failed"].includes(runState)) {
+                clearInterval(autoRunTimer);
+                autoRunTimer = null;
+              }
+            } catch (_e) {}
+          }, 3000);
+        } catch (e) {
+          setStatus(`Trigger DAG failed: ${e.message}`);
+        }
+      }
+
+      loadTheme();
+
+      els.loadDags.addEventListener("click", loadDags);
+      els.dagSearch.addEventListener("input", renderDags);
+      els.triggerDag.addEventListener("click", triggerDag);
+      els.themeToggle.addEventListener("click", toggleTheme);
+
+      els.clearTasks.addEventListener("click", async () => {
+        if (!activeTask || !activeDag || !activeRun) {
+          setStatus("Select a task first");
+          return;
+        }
+        setStatus("Clearing task state...");
+        try {
+          await api(
+            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({ action: "clear" }),
+            },
+          );
+          setStatus("Task cleared, refreshing...", true);
+          await loadRunDetail(activeDag, activeRun, { silent: true });
+        } catch (e) {
+          setStatus(`Clear task failed: ${e.message}`);
+        }
+      });
+
+      els.markSuccess.addEventListener("click", async () => {
+        if (!activeTask || !activeDag || !activeRun) {
+          setStatus("Select a task first");
+          return;
+        }
+        setStatus("Marking task as success...");
+        try {
+          await api(
+            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({ action: "success" }),
+            },
+          );
+          setStatus("Task marked success, refreshing...", true);
+          await loadRunDetail(activeDag, activeRun, { silent: true });
+        } catch (e) {
+          setStatus(`Mark success failed: ${e.message}`);
+        }
+      });
+
+      els.markFailed.addEventListener("click", async () => {
+        if (!activeTask || !activeDag || !activeRun) {
+          setStatus("Select a task first");
+          return;
+        }
+        setStatus("Marking task as failed...");
+        try {
+          await api(
+            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({ action: "failed" }),
+            },
+          );
+          setStatus("Task marked failed, refreshing...", true);
+          await loadRunDetail(activeDag, activeRun, { silent: true });
+        } catch (e) {
+          setStatus(`Mark failed failed: ${e.message}`);
+        }
+      });
+      els.apiBase.addEventListener("change", () =>
+        saveState(false, "apiBase-change"),
+      );
+      els.apiUser.addEventListener("change", () =>
+        saveState(false, "apiUser-change"),
+      );
+      els.apiPass.addEventListener("change", () =>
+        saveState(false, "apiPass-change"),
+      );
+      window.addEventListener("beforeunload", () =>
+        saveState(true, "beforeunload"),
+      );
+      window.addEventListener("pagehide", () => saveState(true, "pagehide"));
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible")
+          saveState(true, "visibility-hidden");
+      });
+      setInterval(() => saveState(false, "autosave-10s"), 10000);
+
+      document.querySelectorAll(".dataset-header").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = document.getElementById(btn.dataset.target);
+          if (target) target.classList.toggle("open");
+          saveState(false, "dataset-toggle");
+        });
+      });
+
+      document.querySelectorAll(".nav-actions a").forEach((a) => {
+        a.addEventListener("click", () => {
+          saveState(true, "nav-click");
+        });
+      });
+
+      if (location.protocol === "file:") {
+        const target =
+          "http://127.0.0.1:9000/html_histograms/airflow_monitor.html";
+        location.replace(target);
+      } else {
+        (async () => {
+          const params = new URLSearchParams(location.search);
+          const fromUrl = params.get("af_state");
+          const fromUrlState =
+            fromUrl &&
+            ((lastRestoreSource = "url-af_state"), decodeStateFromUrl(fromUrl));
+          const saved = fromUrlState || (await loadState());
+
+          if (saved) {
+            if (saved.apiBase) els.apiBase.value = saved.apiBase;
+            if (saved.apiUser) els.apiUser.value = saved.apiUser;
+            if (saved.apiPass) els.apiPass.value = saved.apiPass;
+            if (saved.dagSearch) els.dagSearch.value = saved.dagSearch;
+
+            if (Array.isArray(saved.dagsCache) && saved.dagsCache.length > 0) {
+              dagsCache = saved.dagsCache;
+              renderDags();
+            }
+
+            activeDag = saved.activeDag || null;
+            activeRun = saved.activeRun || null;
+            activeTask = saved.activeTask || null;
+            if (saved.headerTitleHtml)
+              els.headerTitle.innerHTML = saved.headerTitleHtml;
+            if (saved.runListHtml) els.runList.innerHTML = saved.runListHtml;
+            if (saved.runSummaryHtml)
+              els.runSummary.innerHTML = saved.runSummaryHtml;
+            if (saved.taskFlowHtml) els.taskFlow.innerHTML = saved.taskFlowHtml;
+            if (typeof saved.logText === "string")
+              els.logBox.textContent = saved.logText;
+
+            document.querySelectorAll("#runList .item-btn").forEach((btn) => {
+              const runId = btn.title;
+              if (!runId || !activeDag) return;
+              btn.onclick = () => loadRunDetail(activeDag, runId);
+            });
+
+            stateReady = true;
+            saveState(true, "restore-commit");
+            updatePersistDebug("restored");
+            setStatus("State restored from cache", true);
+            await startLiveRefresh();
+          } else {
+            await loadDags();
+            stateReady = true;
+            saveState(true, "initial-load-commit");
+            updatePersistDebug("initial-load");
+            setStatus("DAGs loaded", true);
+            await startLiveRefresh();
+          }
+        })();
+      }
+    </script>
+  </body>
+</html>

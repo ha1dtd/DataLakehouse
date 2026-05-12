@@ -1,11 +1,14 @@
 import argparse
+import json
 import math
 import os
+import subprocess
 import tempfile
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, NumericType
@@ -21,6 +24,34 @@ TABLES = {
     "fhvhv_trip": "silver_catalog.default.fhvhv_trip",
 }
 
+IN_RANGE_HI_CAPS = {
+    "tolls_amount": 100.0,
+    "mta_tax": 5.0,
+    "tips": 50.0,
+    "tip_amount": 50.0,
+}
+
+PEAK_FEATURES_BY_DATASET = {
+    "yellow_taxi": {
+        "trip_distance", "fare_amount", "total_amount", "trip_duration_minutes", "mta_tax", "tolls_amount"
+    },
+    "green_taxi": {
+        "trip_distance", "fare_amount", "total_amount", "trip_duration_minutes", "mta_tax", "tolls_amount"
+    },
+    "fhv_trip": {
+        "trip_duration_minutes"
+    },
+    "fhvhv_trip": {
+        "trip_miles", "trip_time_seconds", "base_passenger_fare", "bcf", "sales_tax", "driver_pay", "trip_duration_minutes", "tolls", "tips"
+    },
+}
+
+STATIC_NUMERIC_FEATURES_BY_DATASET = {
+    "yellow_taxi": sorted(list(PEAK_FEATURES_BY_DATASET["yellow_taxi"])),
+    "green_taxi": sorted(list(PEAK_FEATURES_BY_DATASET["green_taxi"])),
+    "fhv_trip": sorted(list(PEAK_FEATURES_BY_DATASET["fhv_trip"])),
+    "fhvhv_trip": sorted(list(PEAK_FEATURES_BY_DATASET["fhvhv_trip"])),
+}
 
 def build_spark():
     return SparkSession.builder \
@@ -46,7 +77,7 @@ def sampled_df(df, fraction, seed):
     return df.sample(withReplacement=False, fraction=fraction, seed=seed)
 
 
-def auto_outlier_bounds(df, cols, rel_err=0.01):
+def auto_outlier_bounds(df, cols, rel_err=0.02):
     bounds = {}
     for c in cols:
         try:
@@ -60,6 +91,10 @@ def auto_outlier_bounds(df, cols, rel_err=0.01):
             else:
                 lo = max(q01, q25 - 3.0 * iqr)
                 hi = min(q99, q75 + 3.0 * iqr)
+
+            capped_hi = IN_RANGE_HI_CAPS.get(c)
+            if capped_hi is not None:
+                hi = min(hi, float(capped_hi))
 
             if hi <= lo:
                 hi = lo + 1.0
@@ -205,7 +240,44 @@ def infer_unit(col_name):
     return "value"
 
 
-def plot_all_features(agg_map, out_file, title):
+def safe_feature_folder_name(feature_name):
+    return feature_name.replace("/", "_").replace(" ", "_")
+
+
+def plot_single_feature(xs, ys, width, out_file, title, feature_name, y_log=False, x_log=False, prefix=None, style="bar"):
+    unit = infer_unit(feature_name)
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+    if style == "line":
+        pts = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        if x_log:
+            pts = [(x, y) for x, y in pts if x > 0]
+
+        if pts:
+            px, py = zip(*pts)
+            ax.plot(px, py, linewidth=1.8)
+        else:
+            ax.text(0.5, 0.5, "No positive x values for log-scale peak chart", ha="center", va="center", transform=ax.transAxes)
+    else:
+        ax.bar(xs, ys, width=width * 0.95)
+
+    if prefix:
+        ax.set_title(f"{prefix}: {feature_name}")
+    else:
+        ax.set_title(feature_name)
+    ax.set_xlabel(f"{feature_name} ({unit})")
+    ax.set_ylabel("record_count")
+    if y_log:
+        ax.set_yscale("log")
+    if x_log:
+        ax.set_xscale("log")
+    fig.suptitle(title)
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=150)
+    plt.close(fig)
+
+
+def plot_all_features(agg_map, out_file, title, y_log=False):
     cols = list(agg_map.keys())
     if not cols:
         return
@@ -222,8 +294,52 @@ def plot_all_features(agg_map, out_file, title):
         ax.set_title(c)
         ax.set_xlabel(f"{c} ({unit})")
         ax.set_ylabel("record_count")
+        if y_log:
+            ax.set_yscale("log")
 
     for ax in axes[len(cols):]:
+        ax.axis("off")
+
+    fig.suptitle(title)
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=150)
+    plt.close(fig)
+
+
+def plot_combined_inrange_peak(in_range_map, peak_map, out_file, title):
+    in_cols = list(in_range_map.keys())
+    peak_cols = list(peak_map.keys())
+    max_cols = max(len(in_cols), len(peak_cols), 1)
+    ncols = 4
+    nrows = math.ceil(max_cols / ncols)
+
+    fig, axes = plt.subplots(nrows * 2, ncols, figsize=(6 * ncols, 4 * nrows * 2))
+    axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+
+    top_axes = axes[: nrows * ncols]
+    bot_axes = axes[nrows * ncols :]
+
+    for ax, c in zip(top_axes, in_cols):
+        xs, ys, width = in_range_map[c]
+        unit = infer_unit(c)
+        ax.bar(xs, ys, width=width * 0.95)
+        ax.set_title(f"IN_RANGE: {c}")
+        ax.set_xlabel(f"{c} ({unit})")
+        ax.set_ylabel("record_count")
+
+    for ax in top_axes[len(in_cols):]:
+        ax.axis("off")
+
+    for ax, c in zip(bot_axes, peak_cols):
+        xs, ys, width = peak_map[c]
+        unit = infer_unit(c)
+        ax.bar(xs, ys, width=width * 0.95)
+        ax.set_title(f"PEAK: {c}")
+        ax.set_xlabel(f"{c} ({unit})")
+        ax.set_ylabel("record_count")
+        ax.set_yscale("log")
+
+    for ax in bot_axes[len(peak_cols):]:
         ax.axis("off")
 
     fig.suptitle(title)
@@ -243,6 +359,37 @@ def upload_with_aws(local_file, bucket, key):
         raise RuntimeError(f"upload failed: {cmd}")
 
 
+def s3_object_exists(bucket, key):
+    cmd = (
+        f"AWS_ACCESS_KEY_ID='{MINIO_ACCESS_KEY}' "
+        f"AWS_SECRET_ACCESS_KEY='{MINIO_SECRET_KEY}' "
+        f"aws --endpoint-url {MINIO_ENDPOINT} s3api head-object "
+        f"--bucket '{bucket}' --key '{key}' > /dev/null 2>&1"
+    )
+    rc = os.system(cmd)
+    return rc == 0
+
+def list_existing_keys(bucket, prefix):
+    env = os.environ.copy()
+    env["AWS_ACCESS_KEY_ID"] = MINIO_ACCESS_KEY
+    env["AWS_SECRET_ACCESS_KEY"] = MINIO_SECRET_KEY
+
+    cmd = [
+        "aws", "--endpoint-url", MINIO_ENDPOINT,
+        "s3api", "list-objects-v2",
+        "--bucket", bucket,
+        "--prefix", prefix,
+        "--output", "json",
+    ]
+
+    try:
+        out = subprocess.check_output(cmd, env=env, text=True)
+        payload = json.loads(out) if out.strip() else {}
+        contents = payload.get("Contents", []) or []
+        return {item["Key"] for item in contents if isinstance(item, dict) and "Key" in item}
+    except Exception:
+        return set()
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["sample", "full"], required=True)
@@ -250,9 +397,11 @@ def main():
     parser.add_argument("--sample-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bins", type=int, default=50)
+    parser.add_argument("--quantile-rel-err", type=float, default=0.02)
+    parser.add_argument("--day", default="latest")
+    parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
-    spark = build_spark()
     plt.rc('font', size=12)
     plt.rc('axes', labelsize=12, titlesize=12)
     plt.rc('legend', fontsize=10)
@@ -260,59 +409,125 @@ def main():
     plt.rc('ytick', labelsize=9)
 
     tmpdir = tempfile.mkdtemp(prefix="histograms_")
+    spark = build_spark()
 
     for dataset, table in TABLES.items():
-        df = spark.read.table(table)
-        numeric_cols = infer_numeric_features(df)
+        allowed_peak_features = PEAK_FEATURES_BY_DATASET.get(dataset, set())
+
+        numeric_cols = STATIC_NUMERIC_FEATURES_BY_DATASET.get(dataset, [])
         if not numeric_cols:
-            print(f"skip {dataset}: no numeric columns")
+            print(f"skip {dataset}: no static numeric features configured")
+            continue
+        numeric_cols_set = set(numeric_cols)
+
+        df = spark.read.table(table)
+
+        missing_inrange_features = set()
+        missing_peak_features = set()
+        skipped_count = 0
+
+        existing_keys = set()
+        if not args.overwrite:
+            dataset_prefix = f"{args.day}/{dataset}/"
+            existing_keys = list_existing_keys(args.bucket, dataset_prefix)
+
+        for feature_name in numeric_cols:
+            feature_folder = safe_feature_folder_name(feature_name)
+            inrange_key = f"{args.day}/{dataset}/{feature_folder}/inrange.png"
+            if args.overwrite or (inrange_key not in existing_keys):
+                missing_inrange_features.add(feature_name)
+            else:
+                skipped_count += 1
+
+        for feature_name in allowed_peak_features:
+            if feature_name not in numeric_cols_set:
+                continue
+            feature_folder = safe_feature_folder_name(feature_name)
+            peak_key = f"{args.day}/{dataset}/{feature_folder}/peak.png"
+            if args.overwrite or (peak_key not in existing_keys):
+                missing_peak_features.add(feature_name)
+            else:
+                skipped_count += 1
+
+        missing_peak_features = {f for f in missing_peak_features if f in numeric_cols_set}
+
+        needed_target_features = sorted(missing_inrange_features | missing_peak_features)
+        if not needed_target_features:
+            print(f"skip {dataset}: all required charts already exist (no Spark compute)")
+            print(f"uploaded 0 chart image(s), skipped {skipped_count} existing image(s) for dataset={dataset} under s3://{args.bucket}/{args.day}/{dataset}/")
             continue
 
         working_df = sampled_df(
             to_numeric_df(df, numeric_cols),
             args.sample_fraction,
             args.seed,
-        ).cache()
+        ).persist(StorageLevel.MEMORY_AND_DISK)
 
         if args.mode == "sample":
-            working_df = working_df.limit(100000).cache()
+            working_df = working_df.limit(100000).persist(StorageLevel.MEMORY_AND_DISK)
 
-        bounds = auto_outlier_bounds(working_df, numeric_cols)
+        # materialize once to avoid repeated lineage recompute across quantiles/splits/histograms
+        _ = working_df.count()
+
+        bounds = auto_outlier_bounds(working_df, needed_target_features, rel_err=args.quantile_rel_err)
         if not bounds:
             print(f"skip {dataset}: no usable numeric features after outlier profiling")
+            working_df.unpersist()
+            continue
+
+        needed_features = list(bounds.keys())
+        if not needed_features:
+            print(f"skip {dataset}: no bounded features after profiling")
+            working_df.unpersist()
             continue
 
         in_range_df, peak_df = split_range_and_peak(working_df, bounds)
 
-        in_range_map = build_histogram_map(in_range_df, list(bounds.keys()), args.bins, bounds)
-        if not in_range_map:
+        in_range_map = build_histogram_map(in_range_df, needed_features, args.bins, bounds)
+        if not in_range_map and not missing_peak_features:
             print(f"skip {dataset}: no usable numeric features after in-range filtering")
+            working_df.unpersist()
             continue
-
-        in_range_file = os.path.join(tmpdir, f"{dataset}_{args.mode}_histogram_in_range.png")
-        in_range_title = f"{dataset} - random {int(args.sample_fraction * 100)}% histogram profile ({args.mode}, peak-removed)"
-        plot_all_features(in_range_map, in_range_file, in_range_title)
-        upload_with_aws(in_range_file, args.bucket, os.path.basename(in_range_file))
-        print(f"uploaded: s3://{args.bucket}/{os.path.basename(in_range_file)}")
 
         peak_bounds = compute_data_bounds(
             peak_df,
-            list(bounds.keys()),
-            min_floor_by_col={c: hi for c, (_lo, hi) in bounds.items()},
+            needed_features,
+            min_floor_by_col={c: hi for c, (_lo, hi) in bounds.items() if c in needed_features},
         )
         peak_map = build_histogram_map(peak_df, list(peak_bounds.keys()), args.bins, peak_bounds)
-        if peak_map:
-            peak_file = os.path.join(tmpdir, f"{dataset}_{args.mode}_histogram_peak.png")
-            peak_title = f"{dataset} - random {int(args.sample_fraction * 100)}% histogram profile ({args.mode}, peak-only, starts-above-in-range)"
-            plot_all_features(peak_map, peak_file, peak_title)
-            upload_with_aws(peak_file, args.bucket, os.path.basename(peak_file))
-            print(f"uploaded: s3://{args.bucket}/{os.path.basename(peak_file)}")
-        else:
-            print(f"info {dataset}: no high-end peak values found to render peak-only chart")
+        peak_map = {k: v for k, v in peak_map.items() if k in missing_peak_features}
+
+        uploaded_count = 0
+        for feature_name in needed_features:
+            feature_folder = safe_feature_folder_name(feature_name)
+            chart_dir = os.path.join(tmpdir, dataset, feature_folder)
+            os.makedirs(chart_dir, exist_ok=True)
+
+            if feature_name in missing_inrange_features and feature_name in in_range_map:
+                xs, ys, width = in_range_map[feature_name]
+                inrange_file = os.path.join(chart_dir, "inrange.png")
+                inrange_key = f"{args.day}/{dataset}/{feature_folder}/inrange.png"
+                inrange_title = f"{dataset} - {feature_name} in-range ({args.mode}, random {int(args.sample_fraction * 100)}%)"
+                plot_single_feature(xs, ys, width, inrange_file, inrange_title, feature_name, y_log=False, x_log=False, prefix="IN_RANGE")
+                upload_with_aws(inrange_file, args.bucket, inrange_key)
+                uploaded_count += 1
+
+            if feature_name in peak_map:
+                pxs, pys, pwidth = peak_map[feature_name]
+                peak_file = os.path.join(chart_dir, "peak.png")
+                peak_key = f"{args.day}/{dataset}/{feature_folder}/peak.png"
+                peak_title = f"{dataset} - {feature_name} peak ({args.mode}, random {int(args.sample_fraction * 100)}%)"
+                plot_single_feature(pxs, pys, pwidth, peak_file, peak_title, feature_name, y_log=False, x_log=True, prefix="PEAK", style="line")
+                upload_with_aws(peak_file, args.bucket, peak_key)
+                uploaded_count += 1
+
+        print(f"uploaded {uploaded_count} chart image(s), skipped {skipped_count} existing image(s) for dataset={dataset} under s3://{args.bucket}/{args.day}/{dataset}/")
 
         if args.mode == "sample":
             print(f"\n--- {dataset} sampled describe ---")
             working_df.describe().show(truncate=False)
+
+        working_df.unpersist()
 
     spark.stop()
 

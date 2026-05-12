@@ -7,7 +7,7 @@ MINIO_ACCESS_KEY = "admin"
 MINIO_SECRET_KEY = "12345678"
 
 S3A_CONF = f"--conf spark.hadoop.fs.s3a.endpoint={MINIO_ENDPOINT} --conf spark.hadoop.fs.s3a.access.key={MINIO_ACCESS_KEY} --conf spark.hadoop.fs.s3a.secret.key={MINIO_SECRET_KEY} --conf spark.hadoop.fs.s3a.path.style.access=true --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false"
-SCRIPT_BASE = "/home/ubuntu/daihai_script"
+SCRIPT_BASE = "/home/ubuntu/daihai_script/silver_sample_histogram"
 SPARK_COMMON = """
         --master yarn \\
         --deploy-mode client \\
@@ -26,8 +26,8 @@ SPARK_COMMON = """
         --conf spark.memory.offHeap.enabled=true \\
         --conf spark.memory.offHeap.size=1G \\
         --conf spark.sql.files.maxPartitionBytes=134217728 \\
-        --conf spark.executor.extraJavaOptions="-Dio.netty.transport.noNative=true -Dio.netty.handler.ssl.noOpenSsl=true -Dorg.wildfly.openssl.disable=true --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED" \\
-        --conf spark.driver.extraJavaOptions="-Dio.netty.transport.noNative=true -Dio.netty.handler.ssl.noOpenSsl=true -Dorg.wildfly.openssl.disable=true" \\
+        --conf spark.executor.extraJavaOptions=\"-Dio.netty.transport.noNative=true -Dio.netty.handler.ssl.noOpenSsl=true -Dorg.wildfly.openssl.disable=true --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED\" \\
+        --conf spark.driver.extraJavaOptions=\"-Dio.netty.transport.noNative=true -Dio.netty.handler.ssl.noOpenSsl=true -Dorg.wildfly.openssl.disable=true\" \\
         --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
         --conf spark.sql.adaptive.enabled=true \\
         --conf spark.sql.adaptive.coalescePartitions.enabled=true \\
@@ -37,9 +37,9 @@ SPARK_COMMON = """
 
 default_args = {"owner": "you", "start_date": datetime(2024, 1, 1), "retries": 1, "depends_on_past": False}
 
-with DAG(dag_id="silver_histograms_20pct_new", default_args=default_args, schedule_interval=None, catchup=False) as dag:
+with DAG(dag_id="silver_sample_histograms_test", default_args=default_args, schedule_interval=None, catchup=False) as dag:
     run_hist = BashOperator(
-        task_id="generate_histograms_random_20pct",
+        task_id="generate_test_histograms",
         bash_command=f"""
         /opt/spark/bin/spark-submit \
         {SPARK_COMMON} \
@@ -48,6 +48,6 @@ with DAG(dag_id="silver_histograms_20pct_new", default_args=default_args, schedu
         --conf spark.sql.catalog.silver_catalog.type=hadoop \
         --conf spark.sql.catalog.silver_catalog.warehouse=s3a://silver/lakehouse/ \
         {S3A_CONF} \
-        {SCRIPT_BASE}/silver_histograms_new.py --mode full --bucket histogram --sample-fraction 0.2 --seed 42 --bins 40 --quantile-rel-err 0.03 --day 2026-05-05
+        {SCRIPT_BASE}/silver_sample_histograms_job.py --mode sample --bucket histogram --bins 50 --overwrite
 """
     )

@@ -1,0 +1,204 @@
+/*** dark mode overrides ***/
+body.dark-mode {
+  --bg: #0b1220;
+  --bg-soft: #111c33;
+  --panel: #162540;
+  --panel-2: #1a2f52;
+  --text: #dce8f8;
+  --muted: #7a9cc4;
+  --line: #1e3860;
+  --line-strong: #2a4d80;
+  --accent: #2563eb;
+  --accent-2: #3b82f6;
+  --accent-soft: #1a2d56;
+  --success: #22c55e;
+  --warn: #f59e0b;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+body.dark-mode {
+  background: linear-gradient(180deg, #0d1525 0%, #0a101c 100%);
+}
+
+body.dark-mode .sidebar {
+  background: linear-gradient(180deg, #111c33 0%, #0f1729 100%);
+  border-color: var(--line);
+}
+
+body.dark-mode .brand-logo-wrap {
+  background: #0d1a2e;
+  border-color: var(--line);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+body.dark-mode .title {
+  color: #93bbf5;
+}
+
+body.dark-mode .title small {
+  color: var(--muted);
+}
+
+body.dark-mode .controls {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+body.dark-mode .controls input,
+body.dark-mode .controls select {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+body.dark-mode .controls input:focus,
+body.dark-mode .controls select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+body.dark-mode .controls label {
+  color: var(--muted);
+}
+
+body.dark-mode .actions {
+  background: linear-gradient(180deg, #1a2e52 0%, #172847 100%);
+  border-color: var(--line-strong);
+}
+
+body.dark-mode .actions label {
+  color: #93bbf5;
+}
+
+body.dark-mode .actions select {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+body.dark-mode .nav-btn {
+  background: var(--panel);
+  color: #93bbf5;
+  border-color: var(--line-strong);
+}
+
+body.dark-mode .nav-btn:hover {
+  background: #1e3560;
+}
+
+body.dark-mode .nav-btn.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: var(--accent);
+}
+
+body.dark-mode .refresh-btn {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  border-color: #2563eb;
+}
+
+body.dark-mode .refresh-btn:hover {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  filter: none;
+}
+
+body.dark-mode .dataset-group {
+  border-color: var(--line);
+}
+
+body.dark-mode .dataset {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+body.dark-mode .dataset-header {
+  color: var(--text);
+  background: var(--panel);
+}
+
+body.dark-mode .dataset-header:hover {
+  background: var(--accent-soft);
+}
+
+body.dark-mode .feature-btn {
+  color: #a8c5ee;
+  border-color: var(--line);
+}
+
+body.dark-mode .feature-btn:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+body.dark-mode .feature-btn.active {
+  background: linear-gradient(90deg, #1d4ed8, #2563eb);
+  color: #fff;
+}
+
+body.dark-mode #datasetsPanel,
+body.dark-mode #testPanel {
+  background: var(--panel-2);
+}
+
+body.dark-mode .main {
+  background: var(--bg);
+}
+
+body.dark-mode .main-top {
+  background: #111c33;
+  border-color: var(--line);
+}
+
+body.dark-mode .meta {
+  color: var(--muted);
+}
+
+body.dark-mode .log-corner {
+  color: #6b7f9e;
+}
+
+body.dark-mode .hint {
+  color: var(--muted);
+}
+
+body.dark-mode .frame {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: fixed;
+  right: unset;
+  left: 16px;
+  bottom: 16px;
+  z-index: 999;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+body.light-mode .theme-toggle {
+  background: #ffffff;
+  border-color: #cfe0ff;
+  color: #183a66;
+  box-shadow: 0 4px 20px rgba(0, 105, 230, 0.15);
+}

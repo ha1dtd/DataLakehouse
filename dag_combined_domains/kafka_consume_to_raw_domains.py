@@ -16,7 +16,7 @@ MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://192.168.100.66:9001")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "12345678")
 ERROR_BUCKET = os.environ.get("ERROR_BUCKET", "error")
-ERROR_PREFIX = os.environ.get("ERROR_PREFIX", "lakehouse/errors/raw_ingest_kafka")
+ERROR_PREFIX = os.environ.get("ERROR_PREFIX", "raw")
 DOMAIN_REGISTRY_FILE = os.environ.get("DOMAIN_REGISTRY_FILE", "/home/ubuntu/daihai_script/dag_combined_domains/domain_registry_v2.json")
 
 spark = SparkSession.builder \
@@ -28,10 +28,10 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
     .getOrCreate()
 
-spark.sql("CREATE NAMESPACE IF NOT EXISTS raw_catalog.control")
+spark.sql("CREATE NAMESPACE IF NOT EXISTS raw_catalog.registry")
 spark.sql(
     """
-    CREATE TABLE IF NOT EXISTS raw_catalog.control.raw_registry (
+    CREATE TABLE IF NOT EXISTS raw_catalog.registry.raw_registry (
         job_id STRING,
         domain STRING,
         topic STRING,
@@ -111,7 +111,7 @@ messages = read_messages_from_kafka_cli(MAX_MESSAGES)
 processed = 0
 skipped_already_landed = 0
 
-existing_landed = spark.read.table("raw_catalog.control.raw_registry") \
+existing_landed = spark.read.table("raw_catalog.registry.raw_registry") \
     .filter("status = 'landed'") \
     .select("domain", "topic", "source_name", "source_uri", "file_name") \
     .distinct() \
@@ -147,8 +147,8 @@ for payload in messages:
     try:
         domain_cfg = resolve_domain_config(domain)
         bucket = domain_cfg.get("raw_bucket", "raw")
-        raw_prefix = domain_cfg.get("raw_prefix", f"lakehouse/domains/{domain}/raw")
-        object_key = f"{raw_prefix}/{topic}/{source_name}/{file_name}"
+        raw_prefix = domain_cfg.get("raw_prefix", f"lakehouse/{domain}")
+        object_key = f"{raw_prefix}/{file_name}"
         target_uri = f"s3a://{bucket}/{object_key}"
 
         fetch_to_local(source_type, source_uri, local_tmp)
@@ -167,7 +167,7 @@ for payload in messages:
                 jvm = spark.sparkContext._jvm
                 conf = spark.sparkContext._jsc.hadoopConfiguration()
                 local_path = jvm.org.apache.hadoop.fs.Path(f"file://{local_tmp}")
-                err_path = jvm.org.apache.hadoop.fs.Path(f"s3a://{ERROR_BUCKET}/{ERROR_PREFIX}/{domain}/{topic}/{file_name}")
+                err_path = jvm.org.apache.hadoop.fs.Path(f"s3a://{ERROR_BUCKET}/{ERROR_PREFIX}/{domain}/{file_name}")
                 err_fs = err_path.getFileSystem(conf)
                 err_fs.copyFromLocalFile(False, True, local_path, err_path)
         except Exception:
@@ -199,7 +199,7 @@ for payload in messages:
 
 if records:
     df = spark.createDataFrame(records, schema="job_id string, domain string, topic string, source_type string, source_name string, source_uri string, bucket string, object_key string, file_name string, file_type string, file_size_bytes long, ingest_ts timestamp, status string, error_message string")
-    df.writeTo("raw_catalog.control.raw_registry").append()
+    df.writeTo("raw_catalog.registry.raw_registry").append()
 
 print(f"PROCESSED_MESSAGES={processed}")
 print(f"SKIPPED_ALREADY_LANDED={skipped_already_landed}")

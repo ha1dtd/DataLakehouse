@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FoxAI Analytics Console</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../image copy.png" />
+    <link rel="stylesheet" href="./histogram_chat_viewer.css" />
+    <link rel="stylesheet" href="./_dark_mode.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo-wrap">
+            <img class="brand-logo" src="../image copy.png" alt="FoxAI logo" />
+          </div>
+          <div class="title">FoxAI Analytics Console</div>
+        </div>
+
+        <div class="actions">
+          <div class="nav-actions">
+            <a class="nav-btn active" href="./histogram_chat_viewer.html"
+              >Histogram View</a
+            >
+            <a class="nav-btn" href="./airflow_monitor.html">Airflow Monitor</a>
+          </div>
+          <button id="refreshBtn" class="refresh-btn">
+            Refresh feature list from MinIO
+          </button>
+        </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="sourcePanel">
+            <span>Source</span><span>▾</span>
+          </button>
+          <div id="sourcePanel" class="features">
+            <div class="controls compact">
+              <div>
+                <label for="dayInput">Day folder (YYYY-MM-DD)</label>
+                <input id="dayInput" placeholder="2026-05-05" />
+              </div>
+              <div>
+                <label for="baseUrlInput">Chart base URL</label>
+                <input
+                  id="baseUrlInput"
+                  value="http://192.168.100.66:9001/histogram"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="datasetsPanel">
+            <span>Datasets</span><span>▾</span>
+          </button>
+          <div id="datasetsPanel" class="features">
+            <div id="datasetList"></div>
+          </div>
+        </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="testPanel">
+            <span>Test</span><span>▾</span>
+          </button>
+          <div id="testPanel" class="features">
+            <div id="testList"></div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="main">
+        <div class="main-top">
+          <div>
+            <div id="titleText"><strong>No chart selected</strong></div>
+          </div>
+          <div id="status" class="status"></div>
+        </div>
+        <div class="main-body">
+          <div class="frame">
+            <div id="imageWrap" style="display: none; width: 100%">
+              <img
+                id="chartImageInrange"
+                alt="Inrange Chart"
+                style="display: none"
+              />
+              <img
+                id="chartImagePeak"
+                alt="Peak Chart"
+                style="display: none; margin-top: 10px"
+              />
+            </div>
+            <div id="hint" class="hint">Pick a dataset item on the left.</div>
+          </div>
+          <div id="metaText" class="meta log-corner">
+            Select dataset and chart from left panel.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      // Per-feature object layout:
+      // {bucket}/{datasetRoot}/{feature}/inrange.png
+      // test hierarchy now: test/seed_x/{yellow_taxi|green_taxi}/{feature}/inrange.png
+      const DEFAULT_DATASETS = {
+        yellow_taxi: [
+          "trip_distance",
+          "fare_amount",
+          "total_amount",
+          "trip_duration_minutes",
+          "mta_tax",
+          "tolls_amount",
+        ],
+        green_taxi: [
+          "trip_distance",
+          "fare_amount",
+          "total_amount",
+          "trip_duration_minutes",
+          "mta_tax",
+          "tolls_amount",
+        ],
+        fhv_trip: ["trip_duration_minutes"],
+        fhvhv_trip: [
+          "trip_miles",
+          "trip_time_seconds",
+          "base_passenger_fare",
+          "bcf",
+          "sales_tax",
+          "driver_pay",
+          "trip_duration_minutes",
+          "tolls",
+          "tips",
+        ],
+      };
+
+      const els = {
+        list: document.getElementById("datasetList"),
+        testList: document.getElementById("testList"),
+        dayInput: document.getElementById("dayInput"),
+        baseUrlInput: document.getElementById("baseUrlInput"),
+        refreshBtn: document.getElementById("refreshBtn"),
+        imageWrap: document.getElementById("imageWrap"),
+        chartImageInrange: document.getElementById("chartImageInrange"),
+        chartImagePeak: document.getElementById("chartImagePeak"),
+        hint: document.getElementById("hint"),
+        titleText: document.getElementById("titleText"),
+        metaText: document.getElementById("metaText"),
+        status: document.getElementById("status"),
+      };
+
+      const state = {
+        day: "2026-05-05",
+        baseUrl: els.baseUrlInput.value.trim(),
+        datasets: { ...DEFAULT_DATASETS },
+        testSeeds: {},
+        activeDataset: "",
+        activeFeature: "",
+        activeDatasetPath: "",
+      };
+
+      const navParams = new URLSearchParams(location.search);
+      const airflowStateParam = navParams.get("af_state") || "";
+
+      const DATASET_LABELS = {
+        yellow_taxi: "Yellow Taxi",
+        yellow_trip: "Yellow Taxi",
+        green_taxi: "Green Taxi",
+        fhv: "For-Hired Vehicle (FHV)",
+        fhv_trip: "For-Hired Vehicle (FHV)",
+        fhvhv: "High Volume For-Hired Vehicle (FHVHV)",
+        fhvhv_trip: "High Volume For-Hired Vehicle (FHVHV)",
+        test_yellow_taxi: "Test / Yellow Taxi (1GB)",
+        test_green_taxi: "Test / Green Taxi (1GB)",
+      };
+
+      function datasetLabel(name) {
+        return DATASET_LABELS[name] || name;
+      }
+
+      function featureLabel(name) {
+        return name
+          .split("_")
+          .map((x) => (x ? x[0].toUpperCase() + x.slice(1) : x))
+          .join(" ");
+      }
+
+      function buildChartUrls(dataset, feature, datasetPathOverride = "") {
+        const base = state.baseUrl.replace(/\/$/, "");
+        const datasetPath = datasetPathOverride || dataset;
+        const root = `${base}/${datasetPath}/${feature}`;
+        return {
+          inrange: `${root}/inrange.png`,
+          peak: `${root}/peak.png`,
+        };
+      }
+
+      function createDatasetBlock(
+        container,
+        dataset,
+        features,
+        datasetPath = "",
+      ) {
+        const box = document.createElement("div");
+        box.className = "dataset";
+
+        const header = document.createElement("button");
+        header.className = "dataset-header";
+        header.innerHTML = `<span>${datasetLabel(dataset)}</span><span>▾</span>`;
+
+        const featureWrap = document.createElement("div");
+        featureWrap.className = "features";
+
+        features.forEach((f) => {
+          const btn = document.createElement("button");
+          btn.className = "feature-btn";
+          btn.textContent = f;
+          btn.onclick = () =>
+            selectChart(dataset, f, btn, datasetPath || dataset);
+          featureWrap.appendChild(btn);
+        });
+
+        header.onclick = () => {
+          featureWrap.classList.toggle("open");
+        };
+
+        box.appendChild(header);
+        box.appendChild(featureWrap);
+        container.appendChild(box);
+      }
+
+      function createSeedBlock(container, seedName, datasetsByName) {
+        const box = document.createElement("div");
+        box.className = "dataset";
+
+        const header = document.createElement("button");
+        header.className = "dataset-header";
+        const seedLabel = seedName.replace(/^seed_(\d+)$/i, "Seed $1");
+        header.innerHTML = `<span>${seedLabel}</span><span>▾</span>`;
+
+        const seedWrap = document.createElement("div");
+        seedWrap.className = "features";
+
+        Object.entries(datasetsByName)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .forEach(([datasetName, features]) => {
+            const datasetPath = `test/${seedName}/${datasetName}`;
+            createDatasetBlock(seedWrap, datasetName, features, datasetPath);
+          });
+
+        header.onclick = () => {
+          seedWrap.classList.toggle("open");
+        };
+
+        box.appendChild(header);
+        box.appendChild(seedWrap);
+        container.appendChild(box);
+      }
+
+      function createSidebar() {
+        els.list.innerHTML = "";
+        els.testList.innerHTML = "";
+
+        for (const [dataset, features] of Object.entries(state.datasets)) {
+          createDatasetBlock(els.list, dataset, features);
+        }
+
+        for (const [seedName, datasetsByName] of Object.entries(
+          state.testSeeds,
+        ).sort(([a], [b]) => a.localeCompare(b))) {
+          createSeedBlock(els.testList, seedName, datasetsByName);
+        }
+      }
+
+      function parseCommonPrefixes(xmlText) {
+        const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+        return Array.from(doc.getElementsByTagName("CommonPrefixes"))
+          .map((cp) => cp.getElementsByTagName("Prefix")[0]?.textContent || "")
+          .filter(Boolean);
+      }
+
+      async function listPrefixes(prefix) {
+        const base = state.baseUrl.replace(/\/$/, "");
+        const url = `${base}/?delimiter=/&prefix=${encodeURIComponent(prefix)}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`list failed: ${res.status}`);
+        const xml = await res.text();
+        return parseCommonPrefixes(xml);
+      }
+
+      async function refreshDatasetsFromMinio() {
+        els.status.textContent = "Refreshing feature list...";
+        els.status.className = "status";
+
+        try {
+          const discovered = {};
+          const discoveredTestSeeds = {};
+
+          const rootPrefixes = await listPrefixes("");
+          for (const rootPrefix of rootPrefixes) {
+            const rootName = rootPrefix.replace(/\/$/, "");
+            if (!rootName) continue;
+
+            if (rootName === "test") {
+              const seedPrefixes = await listPrefixes("test/");
+              for (const seedPrefix of seedPrefixes) {
+                const seedName = seedPrefix
+                  .replace("test/", "")
+                  .replace(/\/$/, "");
+                if (!seedName) continue;
+
+                const datasetPrefixes = await listPrefixes(seedPrefix);
+                const datasetsForSeed = {};
+
+                for (const dsPrefix of datasetPrefixes) {
+                  const dsName = dsPrefix
+                    .replace(seedPrefix, "")
+                    .replace(/\/$/, "");
+                  if (!dsName) continue;
+
+                  const featurePrefixes = await listPrefixes(dsPrefix);
+                  const features = featurePrefixes
+                    .map((fp) => fp.replace(dsPrefix, "").replace(/\/$/, ""))
+                    .filter(Boolean)
+                    .sort();
+
+                  if (features.length > 0) datasetsForSeed[dsName] = features;
+                }
+
+                if (Object.keys(datasetsForSeed).length > 0) {
+                  discoveredTestSeeds[seedName] = datasetsForSeed;
+                }
+              }
+            } else {
+              const featurePrefixes = await listPrefixes(rootPrefix);
+              const features = featurePrefixes
+                .map((fp) => fp.replace(rootPrefix, "").replace(/\/$/, ""))
+                .filter(Boolean)
+                .sort();
+              if (features.length > 0) discovered[rootName] = features;
+            }
+          }
+
+          state.datasets = { ...DEFAULT_DATASETS, ...discovered };
+          state.testSeeds = discoveredTestSeeds;
+          createSidebar();
+
+          if (
+            Object.keys(discovered).length > 0 ||
+            Object.keys(discoveredTestSeeds).length > 0
+          ) {
+            els.status.textContent = "Feature list refreshed (MinIO)";
+            els.status.className = "status status-green";
+          } else {
+            els.status.textContent =
+              "No MinIO prefixes found, showing defaults";
+            els.status.className = "status status-red";
+          }
+        } catch (_e) {
+          state.datasets = { ...DEFAULT_DATASETS };
+          state.testSeeds = {};
+          createSidebar();
+          els.status.textContent = "Refresh failed, showing defaults";
+          els.status.className = "status";
+        }
+      }
+
+      function clearActiveButtons() {
+        document
+          .querySelectorAll(".feature-btn.active")
+          .forEach((x) => x.classList.remove("active"));
+      }
+
+      function loadImage(url) {
+        return new Promise((resolve, reject) => {
+          const probe = new Image();
+          probe.onload = () => resolve(url);
+          probe.onerror = () => reject(new Error("missing"));
+          probe.src = url + `?probe=${Date.now()}`;
+        });
+      }
+
+      async function selectChart(dataset, feature, btn, datasetPath = "") {
+        clearActiveButtons();
+        btn.classList.add("active");
+        state.activeDataset = dataset;
+        state.activeFeature = feature;
+        state.activeDatasetPath = datasetPath || dataset;
+
+        const urls = buildChartUrls(dataset, feature, state.activeDatasetPath);
+        els.status.textContent = "Loading...";
+        els.status.className = "status";
+
+        let inrangeOk = false;
+        let peakOk = false;
+
+        try {
+          await loadImage(urls.inrange);
+          inrangeOk = true;
+        } catch (_e) {}
+
+        try {
+          await loadImage(urls.peak);
+          peakOk = true;
+        } catch (_e) {}
+
+        els.imageWrap.style.display = "none";
+        els.chartImageInrange.style.display = "none";
+        els.chartImagePeak.style.display = "none";
+
+        if (inrangeOk) {
+          els.imageWrap.style.display = "flex";
+          els.imageWrap.style.alignItems = "center";
+          els.imageWrap.style.justifyContent = "center";
+          els.chartImageInrange.src = urls.inrange + `?t=${Date.now()}`;
+          els.chartImageInrange.style.display = "block";
+
+          els.hint.style.display = "none";
+          els.titleText.innerHTML = `<strong>${datasetLabel(dataset)}: ${featureLabel(feature)}</strong>`;
+          els.metaText.textContent = `inrange: ${urls.inrange} (${inrangeOk ? "ok" : "missing"})`;
+          els.status.textContent = "Loaded";
+          els.status.className = "status status-green";
+        } else {
+          els.hint.style.display = "block";
+          els.hint.textContent = "Chart not found for current day/path.";
+          els.titleText.innerHTML = `<strong>${datasetLabel(dataset)}: ${featureLabel(feature)}</strong>`;
+          els.metaText.textContent = `inrange: ${urls.inrange} (${inrangeOk ? "ok" : "missing"})`;
+          els.status.textContent = "Missing";
+          els.status.className = "status status-red";
+        }
+      }
+
+      els.dayInput.addEventListener("change", (e) => {
+        state.day = e.target.value.trim();
+        if (state.activeDataset && state.activeFeature) {
+          const activeBtn = document.querySelector(".feature-btn.active");
+          if (activeBtn)
+            selectChart(
+              state.activeDataset,
+              state.activeFeature,
+              activeBtn,
+              state.activeDatasetPath,
+            );
+        }
+      });
+
+      els.baseUrlInput.addEventListener("change", (e) => {
+        state.baseUrl = e.target.value.trim();
+        if (state.activeDataset && state.activeFeature) {
+          const activeBtn = document.querySelector(".feature-btn.active");
+          if (activeBtn)
+            selectChart(
+              state.activeDataset,
+              state.activeFeature,
+              activeBtn,
+              state.activeDatasetPath,
+            );
+        }
+      });
+
+      els.refreshBtn.addEventListener("click", () => {
+        refreshDatasetsFromMinio();
+      });
+
+      document
+        .querySelectorAll(".dataset-header[data-target]")
+        .forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const target = document.getElementById(btn.dataset.target);
+            if (target) target.classList.toggle("open");
+          });
+        });
+
+      const airflowNav = document.querySelector(
+        'a[href="./airflow_monitor.html"]',
+      );
+      if (airflowNav && airflowStateParam) {
+        airflowNav.href = `./airflow_monitor.html?af_state=${airflowStateParam}`;
+      }
+
+      els.dayInput.value = state.day;
+      createSidebar();
+      refreshDatasetsFromMinio();
+    </script>
+    <button
+      id="themeToggle"
+      class="theme-toggle"
+      title="Toggle dark mode"
+      aria-label="Toggle dark mode"
+    >
+      ☀️
+    </button>
+    <style>
+      /* inline dark-mode body overrides specific to this page */
+      body.dark-mode .card,
+      body.dark-mode .item-btn,
+      body.dark-mode .log-box,
+      body.dark-mode .kv,
+      body.dark-mode .persist-debug {
+        color: var(--text);
+        border-color: var(--line);
+      }
+      body.dark-mode .card {
+        background: var(--panel);
+      }
+      body.dark-mode .progress {
+        background: #e5edfb;
+      }
+      body.dark-mode .progress > div {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+      }
+      body.dark-mode .status {
+        color: #c91d1d;
+      }
+      body.dark-mode .status-red {
+        color: #c91d1d;
+      }
+      body.dark-mode .status-green,
+      body.dark-mode .ok {
+        color: #0c9f6e;
+      }
+      body.dark-mode .item-btn,
+      body.dark-mode .log-box,
+      body.dark-mode #dagSearch {
+        background: var(--panel-2);
+        color: var(--text);
+        border-color: var(--line-strong);
+      }
+      body.dark-mode .run-btn-success {
+        background: #0a2a1a;
+        border-color: #22c55e;
+        color: #4ade80;
+      }
+      body.dark-mode .run-btn-failed {
+        background: #2a0a0a;
+        border-color: #ef4444;
+        color: #f87171;
+      }
+      body.dark-mode .kv,
+      body.dark-mode .persist-debug {
+        color: var(--muted);
+      }
+      body.dark-mode .progress {
+        background: var(--line);
+      }
+      body.dark-mode .progress > div {
+        background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      }
+      body.dark-mode .dag-name-btn {
+        color: var(--text);
+      }
+    </style>
+    <script>
+      const THEME_KEY = "foxai_histogram_theme_v1";
+      const themeToggle = document.getElementById("themeToggle");
+      function applyTheme(mode) {
+        const dark = mode === "dark";
+        document.body.classList.toggle("dark-mode", dark);
+        if (themeToggle) {
+          themeToggle.textContent = dark ? "🌙" : "☀️";
+          themeToggle.title = dark
+            ? "Switch to light mode"
+            : "Switch to dark mode";
+        }
+      }
+      function loadTheme() {
+        let saved;
+        try {
+          saved = localStorage.getItem(THEME_KEY);
+        } catch (_) {}
+        applyTheme(saved === "dark" ? "dark" : "light");
+      }
+      function toggleTheme() {
+        const dark = !document.body.classList.contains("dark-mode");
+        applyTheme(dark ? "dark" : "light");
+        try {
+          localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+        } catch (_) {}
+      }
+      if (themeToggle) themeToggle.addEventListener("click", toggleTheme);
+      loadTheme();
+    </script>
+  </body>
+</html>
