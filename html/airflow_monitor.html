@@ -205,10 +205,11 @@ Select a DAG, then click Show Code.</pre
       let activeTryNumber = 1;
       let dagsCache = [];
       let tasksCache = [];
-      let autoRunTimer = null;
       let liveRefreshTimer = null;
+      let liveRefreshRunId = null;
       let isLiveRefreshInFlight = false;
       let lastStateHash = "";
+      let suspendLogRefreshUntil = 0;
       const LS_KEY = "foxai_airflow_monitor_state_v1";
       const THEME_KEY = "foxai_shared_theme_v1";
       const STATE_API = "http://127.0.0.1:9010/state?key=default";
@@ -529,8 +530,9 @@ Select a DAG, then click Show Code.</pre
           const data = await api(
             `/dags/${encodeURIComponent(dagId)}/dagRuns?limit=20&order_by=-start_date`,
           );
+          const runs = data.dag_runs || [];
           els.runList.innerHTML = "";
-          (data.dag_runs || []).forEach((r) => {
+          runs.forEach((r) => {
             const runId = r.dag_run_id || r.run_id || r.id || null;
             if (!runId) return;
             const b = document.createElement("button");
@@ -543,12 +545,15 @@ Select a DAG, then click Show Code.</pre
             els.runList.appendChild(b);
           });
           if (!silent) setStatus("Runs loaded", true);
+          return runs;
         } catch (e) {
           if (!silent) setStatus(`Load runs failed: ${e.message}`);
+          return [];
         }
       }
 
       async function loadRunDetail(dagId, runId, opts = {}) {
+        const { silent = false, refreshLog = true } = opts;
         if (!runId || runId === "undefined" || runId === "null") {
           setStatus("Run detail failed: invalid run id", false);
           els.logBox.textContent = "Load log failed: invalid run id";
@@ -556,7 +561,7 @@ Select a DAG, then click Show Code.</pre
         }
         activeRun = runId;
         saveState(false, "loadRunDetail-start");
-        setStatus("Loading run detail...");
+        if (!silent) setStatus("Loading run detail...");
         try {
           const run = await api(
             `/dags/${encodeURIComponent(dagId)}/dagRuns/${encodeURIComponent(runId)}`,
@@ -616,6 +621,7 @@ Select a DAG, then click Show Code.</pre
 
           renderTaskFlow(tasks, dagId, runId);
 
+          const runHasActiveTasks = hasActiveTaskStates(tasks);
           const byId = Object.fromEntries(tasks.map((t) => [t.task_id, t]));
           const preferred =
             (activeTask && byId[activeTask] ? byId[activeTask] : null) ||
@@ -627,11 +633,17 @@ Select a DAG, then click Show Code.</pre
               Number(preferred.try_number) > 0
                 ? Number(preferred.try_number)
                 : 1;
-            await loadTaskLog(dagId, runId, activeTask, activeTryNumber);
+            if (refreshLog && (!silent || runHasActiveTasks)) {
+              await loadTaskLog(dagId, runId, activeTask, activeTryNumber, {
+                force: true,
+              });
+            }
           } else {
             activeTask = null;
             activeTryNumber = 1;
-            els.logBox.textContent = "No task instances.";
+            if (refreshLog) {
+              els.logBox.textContent = "No task instances.";
+            }
           }
           saveState(false, "loadRunDetail-done");
           if (!silent) setStatus("Run detail loaded", true);
@@ -657,6 +669,21 @@ Select a DAG, then click Show Code.</pre
         if (s === "up_for_retry") return "RETRY";
         if (s === "up_for_reschedule") return "RESCHED";
         return (state || "NO_STATUS").toUpperCase();
+      }
+
+      function hasActiveTaskStates(tasks) {
+        const activeStates = new Set([
+          "running",
+          "queued",
+          "scheduled",
+          "restarting",
+          "up_for_retry",
+          "up_for_reschedule",
+          "deferred",
+        ]);
+        return (tasks || []).some((t) =>
+          activeStates.has(String(t?.state || "").toLowerCase()),
+        );
       }
 
       function renderTaskFlow(tasks, dagId, runId) {
@@ -698,7 +725,9 @@ Select a DAG, then click Show Code.</pre
             if (task) {
               activeTryNumber =
                 Number(task.try_number) > 0 ? Number(task.try_number) : 1;
-              await loadTaskLog(dagId, runId, taskId, activeTryNumber);
+              await loadTaskLog(dagId, runId, taskId, activeTryNumber, {
+                force: true,
+              });
             }
           };
         });
@@ -720,28 +749,76 @@ Select a DAG, then click Show Code.</pre
         } catch (_e) {}
       }
 
-      async function startLiveRefresh() {
+      function stopLiveRefresh(statusMsg = "Live refresh idle") {
         if (liveRefreshTimer) clearInterval(liveRefreshTimer);
-        liveRefreshTimer = setInterval(async () => {
-          if (!activeDag || isLiveRefreshInFlight) return;
-          isLiveRefreshInFlight = true;
-          try {
-            await loadRuns(activeDag, { silent: true });
-            if (activeRun) {
-              await loadRunDetail(activeDag, activeRun, { silent: true });
-              await refreshActiveRunButtonState();
-            }
-          } catch (_e) {
-          } finally {
-            isLiveRefreshInFlight = false;
-          }
-        }, 3000);
+        liveRefreshTimer = null;
+        liveRefreshRunId = null;
+        isLiveRefreshInFlight = false;
+        setStatus(statusMsg, true);
       }
 
-      async function loadTaskLog(dagId, runId, taskId, tryNumber) {
+      async function runLiveRefreshTick() {
+        if (!activeDag || isLiveRefreshInFlight) return;
+        isLiveRefreshInFlight = true;
+        try {
+          const runs = await loadRuns(activeDag, { silent: true });
+          const targetRunId =
+            liveRefreshRunId ||
+            activeRun ||
+            runs[0]?.dag_run_id ||
+            runs[0]?.run_id ||
+            runs[0]?.id ||
+            null;
+
+          if (!targetRunId) {
+            stopLiveRefresh("No runs to refresh");
+            return;
+          }
+
+          liveRefreshRunId = targetRunId;
+          activeRun = targetRunId;
+          await loadRunDetail(activeDag, targetRunId, {
+            silent: true,
+            refreshLog: true,
+          });
+          await refreshActiveRunButtonState();
+
+          if (hasActiveTaskStates(tasksCache)) {
+            setStatus("Live refresh active", true);
+            return;
+          }
+
+          stopLiveRefresh("Live refresh idle");
+        } catch (_e) {
+        } finally {
+          isLiveRefreshInFlight = false;
+        }
+      }
+
+      async function startLiveRefresh(runId = null) {
+        liveRefreshRunId = runId || activeRun || null;
+        if (liveRefreshTimer) clearInterval(liveRefreshTimer);
+        await runLiveRefreshTick();
+        if (!liveRefreshRunId) return;
+        liveRefreshTimer = setInterval(runLiveRefreshTick, 3000);
+      }
+
+      function shouldSuspendLogRefresh() {
+        return Date.now() < suspendLogRefreshUntil;
+      }
+
+      function markLogSelectionActive() {
+        suspendLogRefreshUntil = Date.now() + 15000;
+      }
+
+      async function loadTaskLog(dagId, runId, taskId, tryNumber, opts = {}) {
+        const { force = false } = opts;
         const logTaskName = document.getElementById("logTaskName");
         const logTaskState = document.getElementById("logTaskState");
         if (logTaskName) logTaskName.textContent = taskId || "-";
+        if (!force && shouldSuspendLogRefresh()) {
+          return;
+        }
         try {
           if (!runId || runId === "undefined" || runId === "null") {
             throw new Error("invalid run id");
@@ -890,35 +967,13 @@ Select a DAG, then click Show Code.</pre
               body: JSON.stringify({}),
             },
           );
-          setStatus("DAG triggered", true);
-
           const triggeredRunId = out?.dag_run_id || out?.run_id || null;
+          setStatus("DAG triggered", true);
           await loadRuns(activeDag);
-
-          if (autoRunTimer) clearInterval(autoRunTimer);
-          autoRunTimer = setInterval(async () => {
-            try {
-              const runId =
-                triggeredRunId ||
-                ((
-                  await api(
-                    `/dags/${encodeURIComponent(activeDag)}/dagRuns?limit=1&order_by=-start_date`,
-                  )
-                ).dag_runs || [])[0]?.dag_run_id;
-              if (!runId) return;
-
-              await loadRunDetail(activeDag, runId, { silent: true });
-
-              const run = await api(
-                `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(runId)}`,
-              );
-              const runState = String(run?.state || "").toLowerCase();
-              if (["success", "failed"].includes(runState)) {
-                clearInterval(autoRunTimer);
-                autoRunTimer = null;
-              }
-            } catch (_e) {}
-          }, 3000);
+          if (triggeredRunId) {
+            activeRun = triggeredRunId;
+          }
+          await startLiveRefresh(triggeredRunId);
         } catch (e) {
           setStatus(`Trigger DAG failed: ${e.message}`);
         }
@@ -1028,6 +1083,22 @@ Select a DAG, then click Show Code.</pre
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && !els.codeModal.classList.contains("hidden")) {
           closeCodeModal();
+        }
+      });
+
+      ["mousedown", "mouseup", "selectstart", "copy"].forEach((eventName) => {
+        els.logBox.addEventListener(eventName, markLogSelectionActive);
+      });
+      document.addEventListener("selectionchange", () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) return;
+        const anchorNode = sel.anchorNode;
+        const focusNode = sel.focusNode;
+        if (
+          (anchorNode && els.logBox.contains(anchorNode)) ||
+          (focusNode && els.logBox.contains(focusNode))
+        ) {
+          markLogSelectionActive();
         }
       });
 

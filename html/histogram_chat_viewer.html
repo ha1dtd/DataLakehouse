@@ -68,6 +68,15 @@
             <div id="testList"></div>
           </div>
         </div>
+
+        <div class="dataset-group">
+          <button class="dataset-header" data-target="demoPanel">
+            <span>Demo</span><span>▾</span>
+          </button>
+          <div id="demoPanel" class="features">
+            <div id="demoList"></div>
+          </div>
+        </div>
       </aside>
 
       <section class="main">
@@ -102,8 +111,9 @@
 
     <script>
       // Per-feature object layout:
-      // {bucket}/{datasetRoot}/{feature}/inrange.png
-      // test hierarchy now: test/seed_x/{yellow_taxi|green_taxi}/{feature}/inrange.png
+      // dated datasets: {bucket}/{YYYY-MM-DD}/{datasetRoot}/{feature}/inrange.png
+      // test roots: {bucket}/test/{seed}/{dataset}/{feature}/inrange.png
+      // demo roots: {bucket}/demo/{snapshot}/{feature}/inrange.png
       const DEFAULT_DATASETS = {
         yellow_taxi: [
           "trip_distance",
@@ -134,10 +144,12 @@
           "tips",
         ],
       };
+      const DEMO_DATASET_NAME = "realtime_demo";
 
       const els = {
         list: document.getElementById("datasetList"),
         testList: document.getElementById("testList"),
+        demoList: document.getElementById("demoList"),
         dayInput: document.getElementById("dayInput"),
         baseUrlInput: document.getElementById("baseUrlInput"),
         refreshBtn: document.getElementById("refreshBtn"),
@@ -155,6 +167,7 @@
         baseUrl: els.baseUrlInput.value.trim(),
         datasets: { ...DEFAULT_DATASETS },
         testSeeds: {},
+        demoSeeds: {},
         activeDataset: "",
         activeFeature: "",
         activeDatasetPath: "",
@@ -190,9 +203,12 @@
         const base = state.baseUrl.replace(/\/$/, "");
         const day = (state.day || "").replace(/^\/+|\/+$/g, "");
         const datasetPath = datasetPathOverride || dataset;
-        const isTestPath =
-          datasetPath === "test" || datasetPath.startsWith("test/");
-        const pathParts = isTestPath
+        const isSpecialPath =
+          datasetPath === "test" ||
+          datasetPath.startsWith("test/") ||
+          datasetPath === "demo" ||
+          datasetPath.startsWith("demo/");
+        const pathParts = isSpecialPath
           ? [datasetPath, feature]
           : [day, datasetPath, feature];
         const root = `${base}/${pathParts.filter(Boolean).join("/")}`;
@@ -236,7 +252,12 @@
         container.appendChild(box);
       }
 
-      function createSeedBlock(container, seedName, datasetsByName) {
+      function createSeedBlock(
+        container,
+        seedName,
+        datasetsByName,
+        rootName = "test",
+      ) {
         const box = document.createElement("div");
         box.className = "dataset";
 
@@ -248,12 +269,24 @@
         const seedWrap = document.createElement("div");
         seedWrap.className = "features";
 
-        Object.entries(datasetsByName)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .forEach(([datasetName, features]) => {
-            const datasetPath = `test/${seedName}/${datasetName}`;
-            createDatasetBlock(seedWrap, datasetName, features, datasetPath);
-          });
+        if (rootName === "demo") {
+          const features = Array.isArray(datasetsByName)
+            ? datasetsByName
+            : datasetsByName[DEMO_DATASET_NAME] || [];
+          createDatasetBlock(
+            seedWrap,
+            DEMO_DATASET_NAME,
+            features,
+            `${rootName}/${seedName}`,
+          );
+        } else {
+          Object.entries(datasetsByName)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .forEach(([datasetName, features]) => {
+              const datasetPath = `${rootName}/${seedName}/${datasetName}`;
+              createDatasetBlock(seedWrap, datasetName, features, datasetPath);
+            });
+        }
 
         header.onclick = () => {
           seedWrap.classList.toggle("open");
@@ -267,6 +300,7 @@
       function createSidebar() {
         els.list.innerHTML = "";
         els.testList.innerHTML = "";
+        els.demoList.innerHTML = "";
 
         for (const [dataset, features] of Object.entries(state.datasets)) {
           createDatasetBlock(els.list, dataset, features);
@@ -276,6 +310,12 @@
           state.testSeeds,
         ).sort(([a], [b]) => a.localeCompare(b))) {
           createSeedBlock(els.testList, seedName, datasetsByName);
+        }
+
+        for (const [seedName, datasetsByName] of Object.entries(
+          state.demoSeeds,
+        ).sort(([a], [b]) => a.localeCompare(b))) {
+          createSeedBlock(els.demoList, seedName, datasetsByName, "demo");
         }
       }
 
@@ -302,6 +342,7 @@
         try {
           const discovered = {};
           const discoveredTestSeeds = {};
+          const discoveredDemoSeeds = {};
           const dayPrefix = (state.day || "").replace(/^\/+|\/+$/g, "");
           const scopedRoot = dayPrefix ? `${dayPrefix}/` : "";
 
@@ -320,46 +361,65 @@
             if (features.length > 0) discovered[rootName] = features;
           }
 
-          const testRoot = "test/";
-          const seedPrefixes = await listPrefixes(testRoot);
-          for (const seedPrefix of seedPrefixes) {
-            const seedName = seedPrefix
-              .replace(testRoot, "")
-              .replace(/\/$/, "");
-            if (!seedName) continue;
-
-            const datasetPrefixes = await listPrefixes(seedPrefix);
-            const datasetsForSeed = {};
-
-            for (const dsPrefix of datasetPrefixes) {
-              const dsName = dsPrefix
-                .replace(seedPrefix, "")
+          async function discoverSeedRoot(rootName, target) {
+            const rootPrefix = `${rootName}/`;
+            const seedPrefixes = await listPrefixes(rootPrefix);
+            for (const seedPrefix of seedPrefixes) {
+              const seedName = seedPrefix
+                .replace(rootPrefix, "")
                 .replace(/\/$/, "");
-              if (!dsName) continue;
+              if (!seedName) continue;
 
-              const featurePrefixes = await listPrefixes(dsPrefix);
-              const features = featurePrefixes
-                .map((fp) => fp.replace(dsPrefix, "").replace(/\/$/, ""))
-                .filter(Boolean)
-                .sort();
+              if (rootName === "demo") {
+                const featurePrefixes = await listPrefixes(seedPrefix);
+                const features = featurePrefixes
+                  .map((fp) => fp.replace(seedPrefix, "").replace(/\/$/, ""))
+                  .filter(Boolean)
+                  .sort();
+                if (features.length > 0) {
+                  target[seedName] = features;
+                }
+                continue;
+              }
 
-              if (features.length > 0) datasetsForSeed[dsName] = features;
-            }
+              const datasetPrefixes = await listPrefixes(seedPrefix);
+              const datasetsForSeed = {};
 
-            if (Object.keys(datasetsForSeed).length > 0) {
-              discoveredTestSeeds[seedName] = datasetsForSeed;
+              for (const dsPrefix of datasetPrefixes) {
+                const dsName = dsPrefix
+                  .replace(seedPrefix, "")
+                  .replace(/\/$/, "");
+                if (!dsName) continue;
+
+                const featurePrefixes = await listPrefixes(dsPrefix);
+                const features = featurePrefixes
+                  .map((fp) => fp.replace(dsPrefix, "").replace(/\/$/, ""))
+                  .filter(Boolean)
+                  .sort();
+
+                if (features.length > 0) datasetsForSeed[dsName] = features;
+              }
+
+              if (Object.keys(datasetsForSeed).length > 0) {
+                target[seedName] = datasetsForSeed;
+              }
             }
           }
 
+          await discoverSeedRoot("test", discoveredTestSeeds);
+          await discoverSeedRoot("demo", discoveredDemoSeeds);
+
           state.datasets = { ...DEFAULT_DATASETS, ...discovered };
           state.testSeeds = discoveredTestSeeds;
+          state.demoSeeds = discoveredDemoSeeds;
           createSidebar();
 
           if (
             Object.keys(discovered).length > 0 ||
-            Object.keys(discoveredTestSeeds).length > 0
+            Object.keys(discoveredTestSeeds).length > 0 ||
+            Object.keys(discoveredDemoSeeds).length > 0
           ) {
-            els.status.textContent = `Feature list refreshed (MinIO: ${scopedRoot || "/"}; test: /test/)`;
+            els.status.textContent = `Feature list refreshed (MinIO: ${scopedRoot || "/"}; test: /test/; demo: /demo/)`;
             els.status.className = "status status-green";
           } else {
             els.status.textContent = `No MinIO prefixes found under ${scopedRoot || "/"}, showing defaults`;
@@ -368,6 +428,7 @@
         } catch (_e) {
           state.datasets = { ...DEFAULT_DATASETS };
           state.testSeeds = {};
+          state.demoSeeds = {};
           createSidebar();
           els.status.textContent = "Refresh failed, showing defaults";
           els.status.className = "status";
