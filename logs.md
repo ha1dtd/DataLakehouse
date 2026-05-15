@@ -2,6 +2,50 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-15:** RabbitMQ realtime demo deployed and validated on namenode:
+  - Created isolated RabbitMQ demo path under `realtime_rabbitmq/` while leaving the Kafka realtime demo intact.
+  - Pushed scripts to `/home/ubuntu/daihai_script/realtime_rabbitmq/` and copied the old realtime inbox there.
+  - Pushed DAG flat to `/home/ubuntu/airflow/dags/realtime_fare_amount_rabbitmq_pipeline.py`.
+  - Current RabbitMQ queue name is `daihai_local_test_1`.
+  - Receiver behavior now represents the intended long-term trigger model: long-lived process outside Airflow consumes RabbitMQ, writes raw event JSON to MinIO, then auto-triggers DAG `realtime_fare_amount_rabbitmq_pipeline`.
+  - Message types currently supported: `file` and `row`; manual free-text test payloads are ignored by the DAG path.
+  - Confirmed expected RabbitMQ retry semantics: if DAG trigger fails before ack, restarting receiver causes the same unacked message to be redelivered and auto-trigger attempted again.
+  - Trigger auth issue was resolved by hardcoding temporary Airflow API settings in receiver:
+    - API base: `http://192.168.100.66:8081/api/v1`
+    - user/pass: `admin/admin`
+  - Current operating note: Hoang is absent, so upstream transmitter behavior is temporarily simulated manually from our side using `rabbitmq_live_transmitter.py`.
+  - Next validation target clarified with supervisor intent: build a 1-week synthetic taxi dataset, compute batch truth separately, replay same data incrementally through RabbitMQ realtime path, then compare final aggregates/charts for drift, duplicates, or missing rows.
+
+- **2026-05-14:** Combined-domain safe-fix pass completed and deployed:
+  - Re-read and followed current `rule.md` workflow while applying the agreed safe fix sequence.
+  - **Fix 1 complete:** centralized combined-domain runtime config into shared files:
+    - `dag_combined_domains/foxai_config.py`
+    - `dag_combined_domains/foxai_config.json`
+  - Updated combined-domain code to consume shared config instead of scattered inline values:
+    - `dag_combined_domains/dag_combined_domains.py`
+    - `dag_combined_domains/silver_from_bronze_domains.py`
+    - `dag_combined_domains/gold_from_silver_domains.py`
+    - `dag_combined_domains/bronze_from_raw_domains.py`
+    - `dag_combined_domains/kafka_consume_to_raw_domains.py`
+    - `dag_combined_domains/kafka_enqueue_ingest_domains.py`
+  - **Fix 2 complete:** replaced remaining `print()` usage in combined-domain Python files with structured `logging`.
+  - **Fix 3 complete:** finished remaining config cleanup in `dag_combined_domains/dag_combined_domains.py`:
+    - imported shared `INGEST_SOURCES_FILE`
+    - introduced named script path constants from `SCRIPT_BASE`
+    - reduced remaining magic S3A config literals into named constants in the DAG file
+  - Small correctness fix included during fix 2: added missing `os` import in `dag_combined_domains/bronze_from_raw_domains.py`.
+  - Validation done locally:
+    - no editor errors in edited combined-domain files
+    - no remaining `print()` found in `dag_combined_domains/*.py`
+  - Deployment done to namenode with remote hash verification:
+    - DAG pushed to `/home/ubuntu/airflow/dags/dag_combined_domains.py`
+    - scripts/config pushed to `/home/ubuntu/daihai_script/dag_combined_domains/`
+    - local and remote `sha256` matched for all pushed files
+  - RabbitMQ experimentation was separated from combined-domain work by moving local RabbitMQ test files into `hdos_merge/`; no RabbitMQ DAG deployment was done.
+  - Remaining agreed safe fixes:
+    - Fix 4: explicit failure-context logging before re-raise
+    - Fix 5: small observability logs for phase start/end, write targets, cheap counts
+
 - **2026-05-13:** Realtime histogram demo context stabilized:
   - Confirmed active Kafka-first demo path: inbox files → Kafka topic `realtime_fare_amount_demo` → DAG `realtime_fare_amount_pipeline` → MinIO state → Spark histogram snapshot → HTML viewer.
   - Prepared/verified May 13 demo inputs for replay and UI validation:

@@ -6,8 +6,10 @@
   1. `rule.md`
   2. `project.md`
   3. `logs.md`
-- If asked to read `rule.md`, immediately continue by reading `project.md` next, then `logs.md` last.
+- If user only says "read rule.md" outside of session start, read only this file — skip the other two.
 - Remove/ignore any older startup instruction that conflicts with this order.
+
+---
 
 ## Non-negotiables
 
@@ -17,13 +19,16 @@
 - Never claim fixed without a real verification path.
 - After edits, check for editor errors.
 
+---
+
 ## Deploy Rules
 
 - Namenode access: `ssh nn` (assume shell is already on namenode when giving commands)
-- DAG files → `/home/ubuntu/airflow/dags`
-- Job scripts → `/home/ubuntu/daihai_script`
+- DAG files → `/home/ubuntu/airflow/dags` — flat, never inside a subfolder
+- Job scripts → `/home/ubuntu/daihai_script` — can be nested in subfolders
 - Never push HTML files to namenode — served from local HTTP server only.
-- After push, verify remote file content before confirming.
+- When pushing to namenode, push and verify in one command to save token/time.
+- After pushing a DAG file, confirm it appears in Airflow via `airflow dags list | grep <dag_id>` before confirming success.
 
 ---
 
@@ -76,11 +81,16 @@
 - Forbidden: `collect()` on large datasets, Cartesian joins without justification, blind `cache()`, unbounded repartition.
 - Every large transformation must consider: shuffle cost, memory impact, partition skew, file size.
 
+---
+
 ## Airflow Rules
 
 - Airflow is orchestration only — DAGs trigger Spark jobs, nothing more.
 - Forbidden: business logic or heavy transformations inside DAGs or PythonOperator.
-- All tasks must be independently retryable.
+- All tasks must be independently retryable as a design goal — note: existing pipelines
+  may not yet fully satisfy this. Treat as a guardrail for new work, not a claim about current code.
+
+---
 
 ## Config Rules
 
@@ -91,7 +101,9 @@
 
 ## Observability (required on every pipeline)
 
-- Log: input row count, output row count, execution duration, failed record count, schema info.
+- Log: input row count, output row count, execution duration, failed record count, schema info
+  — where count operations are cheap and reasonable. Skip exact counts if prohibitively expensive;
+  use estimates or sampling instead and note the tradeoff.
 - Validate: null rates, duplicate rates, schema consistency, partition validity.
 
 ---
@@ -105,7 +117,8 @@
 
 ## AI Code Generation Rules
 
-Before generating any code, always state:
+Before generating any code, state the following — full detail for refactor/architecture work,
+brief acknowledgment for small isolated hotfixes:
 
 1. Architecture impact
 2. Idempotency strategy
@@ -131,3 +144,104 @@ Priority order for all output:
 5. Developer convenience
 
 Default preference: explicit over implicit · deterministic over clever · safe over fast · observable over opaque.
+
+---
+
+## Pre-code Checklist (mandatory)
+
+- Read the exact file before editing
+- State the idempotency strategy for this change
+- State what happens on rerun
+- Confirm this touches MinIO/Iceberg correctly
+
+---
+
+## Edit Modes
+
+### Hotfix Mode (default)
+
+- One file at a time, stop and confirm between each file.
+- Targeted edits only — touch nothing outside the immediate problem.
+- When in doubt, default to this mode.
+
+### Refactor Mode (for cleanup, restructure, architecture work)
+
+- Inspect the full affected flow before touching anything.
+- Propose a scoped plan: which files, what changes, why — wait for approval before starting.
+- Multiple related files may be edited in one pass if they implement one logical fix, within approved scope only.
+- Prefer minimal coherent change-set over per-file patchwork.
+- Validate end-to-end behavior before closing the refactor.
+- Never expand scope mid-refactor without explicit confirmation.
+
+### Mode Switching
+
+- Default is always Hotfix Mode.
+- Refactor Mode activates only when user explicitly says "refactor mode" or "clean this up properly".
+- Agent must confirm which mode is active at the start of any multi-file task.
+
+---
+
+## Systemic Thinking
+
+- Before fixing a problem locally, assess whether the root cause is architectural.
+- If a local patch would mask a deeper structural issue, say so explicitly before patching.
+- Propose the systemic fix alongside the local fix — let the user decide which to take.
+
+---
+
+## Proactive Architecture Improvement
+
+- If you notice a pattern across files that violates the architecture guardrails,
+  flag it even if not asked. Do not wait to be told.
+- When proposing a fix, always state: is this a local patch or a systemic improvement?
+  Label it clearly so the user can make an informed choice.
+
+---
+
+## Patch vs Refactor Decision
+
+- Local patch = acceptable when: isolated bug, no architectural impact, low risk.
+- Systemic refactor = required when: same problem appears in 3+ places,
+  violates a guardrail, or will get worse as the codebase scales.
+- Never propose only a local patch when a systemic fix is clearly the right answer.
+  Propose both, explain the tradeoff, let the user decide.
+
+---
+
+## Execution Default
+
+- When both a local patch and systemic refactor are presented,
+  present the systemic option first, then the local patch.
+- Do not start the broader refactor until the user explicitly confirms.
+- If user intent is ambiguous, default to the safest reversible
+  implementation and wait for confirmation before proceeding further.
+
+---
+
+## Tool Selection
+
+- For multi-file mechanical changes (headers, imports, config blocks),
+  prefer a script or programmatic approach over repeated exact-match edits.
+- If an exact-match edit fails once, stop and re-read the exact current
+  content before retrying — do not reduce snippet size blindly.
+- If exact-match fails twice on the same location, switch approach entirely.
+  Do not retry the same method more than twice.
+
+---
+
+## Implementation Discipline
+
+- During any multi-step implementation, before each major decision point,
+  state which rule is guiding the next step.
+- If you cannot name the rule, stop and ask before proceeding.
+- If an approach is taking more steps than expected, stop and reassess
+  before continuing. Do not persist on a broken path.
+
+---
+
+## Uncertainty Handling
+
+- If uncertain about current file state, read it first — do not assume.
+- If uncertain about which approach is correct, present options and ask.
+- Never proceed on an assumption without labeling it explicitly as an assumption.
+- Uncertain + silent = forbidden. Uncertain + stated = acceptable.

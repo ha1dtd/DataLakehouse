@@ -12,15 +12,21 @@ Not a rule file. Rules live in the separate rules.md.
 ### Primary focus
 
 - Realtime histogram demo for `fare_amount`
-- Flow: inbox files → Kafka → Airflow DAG → MinIO state → Spark histogram snapshot → HTML viewer
-- Goal: stable end-to-end demo with correct UI behavior and exact Kafka-first semantics
+- Active parallel paths now:
+  - Kafka demo flow: inbox files → Kafka → Airflow DAG → MinIO state → Spark histogram snapshot → HTML viewer
+  - RabbitMQ demo flow: transmitter → RabbitMQ → long-lived receiver on namenode → MinIO raw event → Airflow DAG trigger → MinIO state → calculation artifact → chart snapshot
+- Goal: stable end-to-end demo with correct UI behavior, exact replay semantics, and a batch-vs-realtime comparison path for drift/duplication checking
+
+### Secondary active track
+
+- Combined-domain medallion pipeline safe-hardening pass
+- Safe fixes 1-3 are complete and deployed on namenode
+- Remaining agreed safe fixes:
+  - Fix 4: explicit failure-context logging before re-raise
+  - Fix 5: small observability logs for phase start/end, write targets, cheap counts
 
 ### Open items
 
-- Verify `airflow_monitor.html` refresh behavior after latest refactor:
-  - recent runs refresh during active run
-  - task/state/log refresh through one coherent live path only
-  - refresh stops when no task is active
 - PostgreSQL serving-layer integration via Spark / Thrift / JDBC
 - Reproducible realtime streaming baseline metrics
 
@@ -61,11 +67,18 @@ Not a rule file. Rules live in the separate rules.md.
 - Configs:
   - `ingest_sources_kafka_domains.json`
   - `domain_registry_v2.json`
+  - `foxai_config.py`
+  - `foxai_config.json`
 - Registry contract: `kafka_consume_to_raw_domains.py` writes `raw_catalog.registry.raw_registry` — `bronze_from_raw_domains.py` must read the same table
+- Current hardening status:
+  - Fix 1 complete: shared config/env layer in place and consumed by pipeline files
+  - Fix 2 complete: structured logging replaces `print()` in combined-domain Python files
+  - Fix 3 complete: remaining DAG config cleanup completed
+  - Fixes 4-5 pending
 
 ### B. Realtime histogram demo
 
-- DAG id: `realtime_fare_amount_pipeline`
+- Kafka demo DAG id: `realtime_fare_amount_pipeline`
 - Kafka broker: `192.168.100.66:9092`
 - Topic: `realtime_fare_amount_demo`
 - Consumer group: `realtime-fare-amount-demo-airflow`
@@ -76,6 +89,27 @@ Not a rule file. Rules live in the separate rules.md.
 - Airflow tasks: `consume_kafka_and_update_minio_state` → `gate_histogram_if_new_data` → `generate_histogram_snapshot`
 - Snapshot output: `demo/<snapshot>/fare_amount/`
 - Persistent state: `demo/realtime_fare_amount/state/`
+
+### C. Realtime RabbitMQ demo
+
+- DAG id: `realtime_fare_amount_rabbitmq_pipeline`
+- RabbitMQ broker: `192.168.100.60:5672`
+- Queue: `daihai_local_test_1`
+- DAG file: `/home/ubuntu/airflow/dags/realtime_fare_amount_rabbitmq_pipeline.py`
+- Scripts: `/home/ubuntu/daihai_script/realtime_rabbitmq/`
+- Receiver role: long-lived process outside Airflow; consumes queue, persists raw event to MinIO, triggers DAG via Airflow REST API
+- Trigger behavior is intentionally automatic: once a message is received and persisted, receiver triggers the DAG without manual Airflow action
+- Current trigger auth in receiver is hardcoded for now to Airflow API `http://192.168.100.66:8081/api/v1` with `admin/admin`
+- Current temporary operating model: while Hoang is absent, our side manually simulates the upstream transmitter by sending file/row events through `rabbitmq_live_transmitter.py`
+- Supported message types: `file`, `row`
+- Event landing prefix: `demo/realtime_rabbitmq_fare_amount/event/`
+- Persistent state: `demo/realtime_rabbitmq_fare_amount/state/`
+- Calculation artifact: `demo/<snapshot>/fare_amount/calculation/summary.json`
+- Chart output: `demo/<snapshot>/fare_amount/inrange.png`
+- Current dedupe scope:
+  - file-level dedupe by file event/hash
+  - row-level dedupe by `event_id`
+  - still requires validation against overlap/drift scenarios using a 1-week synthetic taxi dataset
 
 ---
 
@@ -94,6 +128,12 @@ Not a rule file. Rules live in the separate rules.md.
 - `realtime_histogram_demo/realtime_fare_amount_histogram_job.py`
 - `realtime_histogram_demo/realtime_fare_amount_inbox_poller.py`
 - `realtime_histogram_demo/reset_realtime_fare_amount_demo.sh`
+- `realtime_rabbitmq/realtime_fare_amount_single_dag.py`
+- `realtime_rabbitmq/realtime_fare_amount_rabbitmq_ingest_event.py`
+- `realtime_rabbitmq/realtime_fare_amount_rabbitmq_calculation_job.py`
+- `realtime_rabbitmq/realtime_fare_amount_histogram_job.py`
+- `realtime_rabbitmq/rabbitmq_live_receiver.py`
+- `realtime_rabbitmq/rabbitmq_live_transmitter.py`
 
 ### Platform / legacy
 
@@ -112,8 +152,22 @@ Not a rule file. Rules live in the separate rules.md.
 - Flattened demo output path to `demo/<snapshot>/fare_amount/...`
 - Viewer path logic synced with flattened structure
 - Reset helper for MinIO state + Kafka replay
+- RabbitMQ realtime demo deployed and working on namenode:
+  - queue `daihai_local_test_1`
+  - receiver persists raw events to MinIO then auto-triggers Airflow DAG
+  - DAG split into ingest → gate → calculation → chart
+  - receiver/transmitter + DAG/scripts pushed and remote hashes verified
+  - verified trigger auth currently uses hardcoded Airflow API base `http://192.168.100.66:8081/api/v1` and `admin/admin`
+  - confirmed receiver restart replays unacked messages after failed trigger, which is expected RabbitMQ behavior
+  - current ops mode is temporary manual transmitter simulation while Hoang is absent
 - Fixed registry mismatch in combined-domain bronze read path
-- Airflow monitor: improved log copy, partial refresh refactor (verification pending)
+- Airflow monitor live refresh behavior verified working after refactor
+- Combined-domain safe hardening pass, deployed to namenode:
+  - shared config layer added via `dag_combined_domains/foxai_config.py` + `dag_combined_domains/foxai_config.json`
+  - combined-domain DAG and jobs updated to consume shared config
+  - structured logging applied across combined-domain Python files
+  - remaining DAG config cleanup completed
+  - remote deployment verified by matching local/remote `sha256`
 
 ---
 
@@ -123,7 +177,8 @@ Not a rule file. Rules live in the separate rules.md.
 
 - Stabilize Kafka KRaft-only startup runbook on namenode
 - Taxi 2025 forecasting (train on 2020–2024, evaluate vs actuals)
-- Parameterize remaining hardcoded values in active scripts
+- Combined-domain fix 4: add explicit failure-context logging before re-raise
+- Combined-domain fix 5: add small observability logs for phase start/end, write targets, cheap counts
 
 ### Longer-term
 
