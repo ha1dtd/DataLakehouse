@@ -226,6 +226,17 @@ Default preference: explicit over implicit · deterministic over clever · safe 
   content before retrying — do not reduce snippet size blindly.
 - If exact-match fails twice on the same location, switch approach entirely.
   Do not retry the same method more than twice.
+- For refactors touching more than 2 files, always use a script
+  approach from the start — never begin with exact-match edits.
+
+---
+
+## Refactor over 2 files = script only
+
+- Any refactor touching more than 2 files must be implemented
+  as a standalone Python/shell script first.
+- Agent writes the script, you review it, you run it.
+- No inline file edits for multi-file refactors. Ever.
 
 ---
 
@@ -245,3 +256,51 @@ Default preference: explicit over implicit · deterministic over clever · safe 
 - If uncertain about which approach is correct, present options and ask.
 - Never proceed on an assumption without labeling it explicitly as an assumption.
 - Uncertain + silent = forbidden. Uncertain + stated = acceptable.
+
+---
+
+## Anti-Compaction Safety Rule
+
+For any task touching more than 1 file or more than 1 logical step:
+
+### Before first edit
+
+- Create or update `SESSION_STATE.md` with:
+  - Task goal
+  - Files in scope
+  - Current on-disk status of each file
+  - Planned changes per file
+  - Risks and assumptions
+
+### After every file edit
+
+- Immediately update `SESSION_STATE.md` with:
+  - File changed
+  - Exact change made
+  - Verification status
+  - Next file in scope
+
+### If session is getting long or compact may be near
+
+- Stop editing
+- Update `SESSION_STATE.md`
+- Update `logs.md` if progress is meaningful
+- Only then continue
+
+### On resume or after any compaction
+
+- Read `rule.md` → `project.md` → `logs.md` → `SESSION_STATE.md`
+- Re-read exact active files on disk
+- Do not rely on prior chat memory
+- Never start a new edit until on-disk file state is confirmed
+
+### Phase structure for large refactors (3+ files)
+
+- Split into explicit phases, checkpoint after each
+- Do not start next phase until current phase is confirmed complete
+- Example structure:
+  - Phase 1 → read and audit only, no edits
+  - Phase 2 → edit file 1-2, checkpoint
+  - Phase 3 → edit file 3-4, checkpoint
+  - Phase 4 → validate end-to-end
+  - Phase 5 → deploy and verify

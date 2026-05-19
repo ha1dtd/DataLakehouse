@@ -2,6 +2,38 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-18:** `realtime_validate` file-mode path was redesigned, deployed, and checkpointed before row-mode refactor:
+  - re-read `rule.md`, `project.md`, and `logs.md` before continuing work
+  - split `realtime_validate` into separate file-vs-row state/output paths while keeping shallow demo output for the existing HTML viewer
+  - file mode ingest now stores only MinIO/S3 pointer metadata; no more parquet explode in ingest
+  - file calculation now runs through Spark via `spark-submit` instead of plain `python3`
+  - added `comparison.json` artifact under `demo/<snapshot>_<mode>/fare_amount/` for validation comparisons
+  - duplicate reruns now continue when downstream artifacts are missing instead of skipping too early
+  - reduced calculation/chart task logs to compact one-line summaries
+  - fixed chart-task hang caused by raw-max histogram scaling producing ~431k bin edges and x-axis ticks
+  - aligned `fare_amount` histogram bounds more closely with the sample histogram job by switching to a two-stage IQR style upper bound
+  - pushed and hash-verified updated DAG/scripts on the namenode; Airflow lists `realtime_validate` correctly
+  - local HTML monitor work remained local-only as required: task-mutation helper-server requirement was reconfirmed and live refresh was fixed to keep polling the latest run
+  - current remaining issue is row-file mode inefficiency:
+    - transmitter still explodes parquet into per-row messages in pandas/Python
+    - receiver/runtime path still implies high per-row orchestration/state overhead
+    - next approved direction is Approach A: chunked/batched row-file replay that preserves row-level semantics while avoiding one message/state rewrite per row
+
+- **2026-05-18:** Fixed Airflow monitor task-action REST routes using actual Airflow docs:
+  - `html/airflow_monitor.html` task mutations must not use `/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}` with an `action` body.
+  - Correct routes recorded for future HTML work:
+    - `POST /api/v1/dags/{dag_id}/clearTaskInstances`
+    - `POST /api/v1/dags/{dag_id}/updateTaskInstancesState`
+
+- **2026-05-18:** Defined the next RabbitMQ validation task more concretely:
+  - Re-read `rule.md` before planning.
+  - Agreed the next task is a systemic validation, not a code change yet.
+  - Validation target: one fixed 1-week taxi dataset used both as offline batch truth and as incremental RabbitMQ replay input.
+  - Batch side must produce exact final metrics for comparison: row count, distinct row-key count, and histogram bins/counts.
+  - Realtime side must replay the same data through `realtime_rabbitmq`, then compare final state against batch truth for drift, duplicates, missing rows, and extra rows.
+  - Planned scenario matrix includes: clean replay, duplicate file resend, duplicate row resend, overlapping files, same business rows with new event ids, and receiver restart during unacked-message conditions.
+  - Key current risk called out explicitly: dedupe is by file hash and `event_id`, so business-row duplication may still slip through when identical rows arrive under new IDs.
+
 - **2026-05-15:** RabbitMQ realtime demo deployed and validated on namenode:
   - Created isolated RabbitMQ demo path under `realtime_rabbitmq/` while leaving the Kafka realtime demo intact.
   - Pushed scripts to `/home/ubuntu/daihai_script/realtime_rabbitmq/` and copied the old realtime inbox there.

@@ -12,6 +12,17 @@ Not a rule file. Rules live in the separate rules.md.
 ### Primary focus
 
 - Realtime histogram demo for `fare_amount`
+- Current active validation subtrack: `realtime_validate` for batch-vs-row replay correctness on the same silver parquet slice
+- `realtime_validate` file mode checkpoint now complete and deployed:
+  - file ingest is pointer-only
+  - calculation runs in Spark via `spark-submit`
+  - comparison JSON is written alongside chart output
+  - duplicate rerun continues if downstream artifacts are missing
+  - histogram bounds now use a two-stage IQR style upper bound for `fare_amount` instead of raw-max scaling
+- Current known weak point is row-file mode performance, not file mode correctness:
+  - row-file still explodes parquet into per-row messages in Python/pandas
+  - row ingest still reloads and rewrites large JSON state
+  - row replay remains the next fix target before full batch-vs-row validation
 - Active parallel paths now:
   - Kafka demo flow: inbox files → Kafka → Airflow DAG → MinIO state → Spark histogram snapshot → HTML viewer
   - RabbitMQ demo flow: transmitter → RabbitMQ → long-lived receiver on namenode → MinIO raw event → Airflow DAG trigger → MinIO state → calculation artifact → chart snapshot
@@ -27,6 +38,12 @@ Not a rule file. Rules live in the separate rules.md.
 
 ### Open items
 
+- 1-week taxi batch-vs-realtime validation for `realtime_rabbitmq`:
+  - lock one fixed 1-week taxi dataset and schema
+  - compute batch truth separately
+  - replay the same data incrementally through RabbitMQ
+  - compare final row counts, distinct row keys, and histogram bins for drift / duplicates / misses
+  - include overlap, duplicate resend, and receiver-restart scenarios
 - PostgreSQL serving-layer integration via Spark / Thrift / JDBC
 - Reproducible realtime streaming baseline metrics
 
@@ -93,6 +110,14 @@ Not a rule file. Rules live in the separate rules.md.
 ### C. Realtime RabbitMQ demo
 
 - DAG id: `realtime_fare_amount_rabbitmq_pipeline`
+- Separate validation DAG now active locally/on namenode: `realtime_validate`
+- Validation purpose: compare whole-file `fare_amount` histogram output against row-replay `fare_amount` histogram output for the same source parquet
+- Validation checkpoint status:
+  - file mode path is working end-to-end with shallow output `demo/<snapshot>_file/fare_amount/...`
+  - comparison JSON output is available for both modes once generated
+  - Airflow monitor helper-server requirement was reconfirmed for task mutations
+  - Airflow monitor live refresh logic was fixed locally so it keeps polling instead of going permanently idle after one run finishes
+  - row-file mode is still architecturally inefficient and is the next approved fix target
 - RabbitMQ broker: `192.168.100.60:5672`
 - Queue: `daihai_local_test_1`
 - DAG file: `/home/ubuntu/airflow/dags/realtime_fare_amount_rabbitmq_pipeline.py`
@@ -109,7 +134,12 @@ Not a rule file. Rules live in the separate rules.md.
 - Current dedupe scope:
   - file-level dedupe by file event/hash
   - row-level dedupe by `event_id`
-  - still requires validation against overlap/drift scenarios using a 1-week synthetic taxi dataset
+  - still requires validation against overlap/drift scenarios using a fixed 1-week taxi dataset
+- Agreed next validation task:
+  - compute offline batch truth for the same 1-week taxi slice
+  - replay the identical data incrementally through RabbitMQ as file and/or row events
+  - compare final state using exact row counts, distinct row keys, and histogram bin counts
+  - run explicit duplicate, overlap, and receiver-restart scenarios to identify whether current dedupe is only transport-level or also business-row safe
 
 ---
 
@@ -145,6 +175,17 @@ Not a rule file. Rules live in the separate rules.md.
 
 ## 5. Recently Completed
 
+- `realtime_validate` file-mode hardening and deployment completed:
+  - split file vs row state/output paths instead of one shared state
+  - removed parquet decode/materialization from file ingest
+  - changed file calculation to Spark-based `spark-submit` execution
+  - added `comparison.json` artifact for validation output
+  - added duplicate-rerun recovery when downstream artifacts are missing
+  - reduced noisy task log output to compact summaries
+  - fixed chart hangs caused by excessive raw-max bin/tick generation
+  - changed `fare_amount` histogram bounds to use a two-stage IQR style upper bound
+- Remaining realtime validation issue is row-file performance, not file-mode correctness
+
 - Kafka-first realtime histogram demo — full flow built and verified
 - Poller support for `.json`, `.csv`, `.parquet`, `.xml`
 - Fixed bootstrap vs consumer-group offset behavior
@@ -175,6 +216,9 @@ Not a rule file. Rules live in the separate rules.md.
 
 ### Near-term
 
+- Refactor `realtime_validate` row-file mode with a chunked/batched replay design so row semantics stay row-level without sending one RabbitMQ message + one JSON state rewrite per row
+- Then run the fixed 1-week taxi batch-vs-row validation and compare file-vs-row counts/bins for duplicates, misses, and drift
+- Build and run the 1-week taxi batch-vs-realtime validation plan for `realtime_rabbitmq`
 - Stabilize Kafka KRaft-only startup runbook on namenode
 - Taxi 2025 forecasting (train on 2020–2024, evaluate vs actuals)
 - Combined-domain fix 4: add explicit failure-context logging before re-raise
@@ -196,6 +240,9 @@ Not a rule file. Rules live in the separate rules.md.
 - Performance is I/O/network bound — config tuning alone has limited impact
 - Legacy taxi pipeline stays stable while newer pipelines expand alongside it
 - Airflow: Python DAGs only
+- For `html/airflow_monitor.html` task actions, use actual Airflow REST endpoints:
+  - `POST /api/v1/dags/{dag_id}/clearTaskInstances`
+  - `POST /api/v1/dags/{dag_id}/updateTaskInstancesState`
 - Edits stay targeted — no broad overwrites, no parallel copies of active scripts
 
 ---

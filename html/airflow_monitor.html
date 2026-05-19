@@ -213,6 +213,7 @@ Select a DAG, then click Show Code.</pre
       const LS_KEY = "foxai_airflow_monitor_state_v1";
       const THEME_KEY = "foxai_shared_theme_v1";
       const STATE_API = "http://127.0.0.1:9010/state?key=default";
+      const AIRFLOW_PROXY_API = "http://127.0.0.1:9010/airflow/request";
 
       function applyTheme(mode) {
         const dark = mode === "dark";
@@ -384,12 +385,36 @@ Select a DAG, then click Show Code.</pre
         return (els.apiBase.value || "").trim().replace(/\/$/, "");
       }
 
+      function airflowProxyPayload(path, options = {}) {
+        let upstreamBody = options.body;
+        if (typeof upstreamBody === "string") {
+          try {
+            upstreamBody = JSON.parse(upstreamBody);
+          } catch (_e) {}
+        }
+
+        return {
+          method: options.method || "POST",
+          baseUrl: normalizedBaseUrl(),
+          path,
+          username: (els.apiUser.value || "").trim(),
+          password: (els.apiPass.value || "").trim(),
+          headers: {
+            Accept: options.expectText ? "text/plain" : "application/json",
+            ...(options.headers || {}),
+          },
+          body: upstreamBody,
+        };
+      }
+
       function fetchFailureHint(err) {
         const msg = String(err?.message || err);
         if (msg.includes("401"))
           return "Unauthorized (401): check username/password or API auth backend.";
         if (msg.includes("403"))
           return "Forbidden (403): user lacks permissions.";
+        if (msg.includes("502"))
+          return "Proxy could not reach Airflow: check API base URL, tunnel, or Airflow availability.";
         if (msg.includes("Failed to fetch"))
           return "Network/CORS blocked: check tunnel, API URL, and browser CORS.";
         return msg;
@@ -416,6 +441,36 @@ Select a DAG, then click Show Code.</pre
           });
         } catch (err) {
           throw new Error(`Fetch failed for ${url}. ${fetchFailureHint(err)}`);
+        }
+
+        if (!res.ok) {
+          let body = "";
+          try {
+            body = await res.text();
+          } catch (_e) {}
+          throw new Error(
+            `${res.status} ${res.statusText} at ${url}${body ? ` | ${body.slice(0, 220)}` : ""}`,
+          );
+        }
+
+        if (options.expectText) return res.text();
+        return res.json();
+      }
+
+      async function apiViaProxy(path, options = {}) {
+        const base = normalizedBaseUrl();
+        const url = base + path;
+        let res;
+        try {
+          res = await fetch(AIRFLOW_PROXY_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(airflowProxyPayload(path, options)),
+          });
+        } catch (err) {
+          throw new Error(
+            `Fetch failed for ${url}. Local proxy/server unreachable: check helper server on 127.0.0.1:9010.`,
+          );
         }
 
         if (!res.ok) {
@@ -757,21 +812,41 @@ Select a DAG, then click Show Code.</pre
         setStatus(statusMsg, true);
       }
 
+      function resolveRunId(run) {
+        return run?.dag_run_id || run?.run_id || run?.id || null;
+      }
+
+      function findPreferredLiveRun(runs) {
+        const activeStates = new Set([
+          "running",
+          "queued",
+          "scheduled",
+          "restarting",
+          "up_for_retry",
+          "up_for_reschedule",
+          "deferred",
+        ]);
+        const newestActive = (runs || []).find((r) =>
+          activeStates.has(String(r?.state || "").toLowerCase()),
+        );
+        return resolveRunId(newestActive) || resolveRunId((runs || [])[0]) || null;
+      }
+
       async function runLiveRefreshTick() {
         if (!activeDag || isLiveRefreshInFlight) return;
         isLiveRefreshInFlight = true;
         try {
           const runs = await loadRuns(activeDag, { silent: true });
+          const activeTaskStatesPresent = hasActiveTaskStates(tasksCache);
+          const preferredRunId = findPreferredLiveRun(runs);
           const targetRunId =
-            liveRefreshRunId ||
+            (activeTaskStatesPresent && (liveRefreshRunId || activeRun)) ||
+            preferredRunId ||
             activeRun ||
-            runs[0]?.dag_run_id ||
-            runs[0]?.run_id ||
-            runs[0]?.id ||
             null;
 
           if (!targetRunId) {
-            stopLiveRefresh("No runs to refresh");
+            setStatus("Live refresh waiting for runs", true);
             return;
           }
 
@@ -788,7 +863,7 @@ Select a DAG, then click Show Code.</pre
             return;
           }
 
-          stopLiveRefresh("Live refresh idle");
+          setStatus("Live refresh watching latest run", true);
         } catch (_e) {
         } finally {
           isLiveRefreshInFlight = false;
@@ -998,11 +1073,20 @@ Select a DAG, then click Show Code.</pre
         }
         setStatus("Clearing task state...");
         try {
-          await api(
-            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+          await apiViaProxy(
+            `/dags/${encodeURIComponent(activeDag)}/clearTaskInstances`,
             {
               method: "POST",
-              body: JSON.stringify({ action: "clear" }),
+              body: JSON.stringify({
+                dry_run: false,
+                task_ids: [activeTask],
+                dag_run_id: activeRun,
+                include_upstream: false,
+                include_downstream: false,
+                include_future: false,
+                include_past: false,
+                reset_dag_runs: true,
+              }),
             },
           );
           setStatus("Task cleared, refreshing...", true);
@@ -1019,11 +1103,20 @@ Select a DAG, then click Show Code.</pre
         }
         setStatus("Marking task as success...");
         try {
-          await api(
-            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+          await apiViaProxy(
+            `/dags/${encodeURIComponent(activeDag)}/updateTaskInstancesState`,
             {
               method: "POST",
-              body: JSON.stringify({ action: "success" }),
+              body: JSON.stringify({
+                dry_run: false,
+                task_id: activeTask,
+                dag_run_id: activeRun,
+                include_upstream: false,
+                include_downstream: false,
+                include_future: false,
+                include_past: false,
+                new_state: "success",
+              }),
             },
           );
           setStatus("Task marked success, refreshing...", true);
@@ -1040,11 +1133,20 @@ Select a DAG, then click Show Code.</pre
         }
         setStatus("Marking task as failed...");
         try {
-          await api(
-            `/dags/${encodeURIComponent(activeDag)}/dagRuns/${encodeURIComponent(activeRun)}/taskInstances/${encodeURIComponent(activeTask)}`,
+          await apiViaProxy(
+            `/dags/${encodeURIComponent(activeDag)}/updateTaskInstancesState`,
             {
               method: "POST",
-              body: JSON.stringify({ action: "failed" }),
+              body: JSON.stringify({
+                dry_run: false,
+                task_id: activeTask,
+                dag_run_id: activeRun,
+                include_upstream: false,
+                include_downstream: false,
+                include_future: false,
+                include_past: false,
+                new_state: "failed",
+              }),
             },
           );
           setStatus("Task marked failed, refreshing...", true);
