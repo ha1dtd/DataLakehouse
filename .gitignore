@@ -2,6 +2,11 @@
 data_test/
 minio_test/
 
+# Local temp artifacts
+.tmp*
+.tmp*/
+.DS_Store
+
 # Large data artifacts
 *.parquet
 *.csv

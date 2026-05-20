@@ -2,6 +2,18 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-20:** `realtime_rabbitmq` 5-day validation path worked on namenode after the May 19 refactor/follow-up fixes:
+  - user confirmed the deployed DAG worked
+  - runtime path in use is `realtime_rabbitmq`, not `realtime_validate`
+  - row-day inbox files were updated to use row-specific `event_id` values (`fare-demo-5day-row-0001` ... `0005`) so row mode is not deduped against the file-mode batch
+  - file mode and row mode state were split under `demo/realtime_rabbitmq_fare_amount/state/file/...` and `.../state/row/...` so row charts do not append on top of file-mode state
+  - deployed runtime files on namenode remain:
+    - DAG: `/home/ubuntu/airflow/dags/realtime_rabbitmq.py`
+    - scripts: `/home/ubuntu/daihai_script/realtime_rabbitmq/`
+  - current known remaining gap in the chat record:
+    - the user confirmed the DAG worked, but the chat does not explicitly record whether `demo/row_day5/fare_amount/...` was compared against `demo/file/fare_amount/...`
+    - future sessions should inspect existing MinIO artifacts first before rerunning anything
+
 - **2026-05-18:** `realtime_validate` file-mode path was redesigned, deployed, and checkpointed before row-mode refactor:
   - re-read `rule.md`, `project.md`, and `logs.md` before continuing work
   - split `realtime_validate` into separate file-vs-row state/output paths while keeping shallow demo output for the existing HTML viewer

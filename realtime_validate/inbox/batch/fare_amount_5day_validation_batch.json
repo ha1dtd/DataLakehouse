@@ -1,0 +1,36 @@
+{
+  "event_type": "batch_seed",
+  "batch_id": "fare-demo-5day-batch-0001",
+  "rows": [
+    {
+      "event_id": "fare-demo-5day-0001",
+      "trip_id": "DEMO-5DAY-0001",
+      "fare_amount": 10.0,
+      "event_time": "2026-05-01T09:00:00Z"
+    },
+    {
+      "event_id": "fare-demo-5day-0002",
+      "trip_id": "DEMO-5DAY-0002",
+      "fare_amount": 20.0,
+      "event_time": "2026-05-02T09:00:00Z"
+    },
+    {
+      "event_id": "fare-demo-5day-0003",
+      "trip_id": "DEMO-5DAY-0003",
+      "fare_amount": 30.0,
+      "event_time": "2026-05-03T09:00:00Z"
+    },
+    {
+      "event_id": "fare-demo-5day-0004",
+      "trip_id": "DEMO-5DAY-0004",
+      "fare_amount": 40.0,
+      "event_time": "2026-05-04T09:00:00Z"
+    },
+    {
+      "event_id": "fare-demo-5day-0005",
+      "trip_id": "DEMO-5DAY-0005",
+      "fare_amount": 50.0,
+      "event_time": "2026-05-05T09:00:00Z"
+    }
+  ]
+}

@@ -2,12 +2,36 @@
 
 ## Startup Read Order
 
-- Before any workday/session, read files in this exact order:
+- Before any fresh workday/session start, read files in this exact order:
   1. `rule.md`
   2. `project.md`
   3. `logs.md`
-- If user only says "read rule.md" outside of session start, read only this file — skip the other two.
+- If resuming an in-progress task or any task that may have been compacted, read files in this exact order:
+  1. `rule.md`
+  2. `project.md`
+  3. `logs.md`
+  4. `progress.md`
+- If user only says "read rule.md" outside of session start, read only this file — skip the other three.
 - Remove/ignore any older startup instruction that conflicts with this order.
+
+---
+
+## progress Filename Rule
+
+- The session state file name is exactly `progress.md` at workspace root.
+- Do not infer filename variants such as `.MD` or other casing.
+- If the file is missing, say so explicitly instead of silently substituting another file.
+
+---
+
+## Project Memory Maintenance
+
+- In `project.md`, only active / in-progress work should stay in active task sections such as:
+  - `Current Active Work`
+  - `Active Systems`
+  - `Near-term / Backlog`
+- Completed work should be moved down into `project.md` section `## 5. Last Updated`.
+- When the user explicitly says a task is completed, move that task out of the active section and record it under `## 5. Last Updated` instead of leaving it mixed with active work.
 
 ---
 
@@ -265,7 +289,7 @@ For any task touching more than 1 file or more than 1 logical step:
 
 ### Before first edit
 
-- Create or update `SESSION_STATE.md` with:
+- Create or update `progress.md` with:
   - Task goal
   - Files in scope
   - Current on-disk status of each file
@@ -274,7 +298,7 @@ For any task touching more than 1 file or more than 1 logical step:
 
 ### After every file edit
 
-- Immediately update `SESSION_STATE.md` with:
+- Immediately update `progress.md` with:
   - File changed
   - Exact change made
   - Verification status
@@ -283,16 +307,22 @@ For any task touching more than 1 file or more than 1 logical step:
 ### If session is getting long or compact may be near
 
 - Stop editing
-- Update `SESSION_STATE.md`
+- Update `progress.md`
 - Update `logs.md` if progress is meaningful
 - Only then continue
 
 ### On resume or after any compaction
 
-- Read `rule.md` → `project.md` → `logs.md` → `SESSION_STATE.md`
+- Read `rule.md` → `project.md` → `logs.md` → `progress.md`
 - Re-read exact active files on disk
 - Do not rely on prior chat memory
 - Never start a new edit until on-disk file state is confirmed
+- Source of truth priority:
+  1. On-disk file contents
+  2. `progress.md`
+  3. repo memory
+  4. chat history last
+- If `progress.md` conflicts with chat memory, trust `progress.md` until on-disk files are re-read.
 
 ### Phase structure for large refactors (3+ files)
 

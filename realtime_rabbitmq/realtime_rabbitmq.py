@@ -51,6 +51,12 @@ def should_continue():
 
     with open(summary_file, "r", encoding="utf-8") as f:
         summary = json.load(f)
+    mode = str(summary.get("mode") or "")
+    snapshot_label = str(summary.get("snapshot_label") or "")
+    if mode not in {"file", "row"}:
+        raise RuntimeError(f"Unsupported ingest mode in summary: {mode or 'missing'}")
+    if not snapshot_label:
+        raise RuntimeError("Missing snapshot_label in last_ingest_summary")
     return bool(summary.get("should_calculate"))
 
 

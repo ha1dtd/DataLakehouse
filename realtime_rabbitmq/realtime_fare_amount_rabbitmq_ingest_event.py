@@ -8,6 +8,9 @@ import tempfile
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 MINIO_ENDPOINT = "http://192.168.100.66:9001"
 MINIO_ACCESS_KEY = "admin"
 MINIO_SECRET_KEY = "12345678"
@@ -65,6 +68,11 @@ def load_json(path):
 def save_json(path, payload):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+
+
+def save_parquet(path, rows):
+    table = pa.Table.from_pylist(rows or [])
+    pq.write_table(table, path)
 
 
 def sanitize_scalar(value):
@@ -136,20 +144,31 @@ def main():
     parser.add_argument("--snapshot-prefix", default="demo")
     args = parser.parse_args()
 
-    state_key = f"{args.state_prefix}/current_rows.json"
-    event_ids_key = f"{args.state_prefix}/processed_event_ids.json"
-    file_ids_key = f"{args.state_prefix}/processed_file_ids.json"
     summary_key = f"{args.state_prefix}/last_ingest_summary.json"
 
     tmpdir = tempfile.mkdtemp(prefix="realtime_rabbitmq_ingest_")
     event_file = os.path.join(tmpdir, "event.json")
-    state_file = os.path.join(tmpdir, "current_rows.json")
-    event_ids_file = os.path.join(tmpdir, "processed_event_ids.json")
-    file_ids_file = os.path.join(tmpdir, "processed_file_ids.json")
     summary_file = os.path.join(tmpdir, "last_ingest_summary.json")
 
     aws_cp_from_s3(args.bucket, args.event_key, event_file)
     event_payload = load_json(event_file)
+    incoming_rows, ingest_kind = extract_rows(event_payload)
+
+    if ingest_kind == "file":
+        state_key = f"{args.state_prefix}/file/current_rows.json"
+        event_ids_key = f"{args.state_prefix}/file/processed_event_ids.json"
+        file_ids_key = f"{args.state_prefix}/file/processed_file_ids.json"
+        row_parquet_key = None
+    else:
+        state_key = f"{args.state_prefix}/row/current_rows.json"
+        event_ids_key = f"{args.state_prefix}/row/processed_event_ids.json"
+        file_ids_key = f"{args.state_prefix}/row/processed_file_ids.json"
+        row_parquet_key = f"{args.state_prefix}/row/current_rows.parquet"
+
+    state_file = os.path.join(tmpdir, "current_rows.json")
+    row_parquet_file = os.path.join(tmpdir, "current_rows.parquet")
+    event_ids_file = os.path.join(tmpdir, "processed_event_ids.json")
+    file_ids_file = os.path.join(tmpdir, "processed_file_ids.json")
 
     rows = []
     processed_event_ids = []
@@ -165,12 +184,13 @@ def main():
         aws_cp_from_s3(args.bucket, file_ids_key, file_ids_file)
         processed_file_ids = load_json(file_ids_file)
 
-    incoming_rows, ingest_kind = extract_rows(event_payload)
     metadata = event_payload.get("metadata") or {}
     event_id = str(event_payload.get("event_id") or "")
     file_event_id = str(metadata.get("file_event_id") or event_id)
     applied_rows = 0
     duplicate = False
+    mode = ingest_kind
+    snapshot_label = "file" if ingest_kind == "file" else f"row_day{len(rows)}"
 
     if ingest_kind == "file":
         if file_event_id and file_event_id in processed_file_ids:
@@ -186,6 +206,7 @@ def main():
                 applied_rows += 1
             if file_event_id:
                 processed_file_ids.append(file_event_id)
+            snapshot_label = "file"
     else:
         row = incoming_rows[0]
         row_event_id = str(row.get("event_id") or event_id)
@@ -196,11 +217,17 @@ def main():
             if row_event_id:
                 processed_event_ids.append(row_event_id)
             applied_rows = 1
+            snapshot_label = f"row_day{len(rows)}"
+
+    if ingest_kind == "row" and applied_rows > 0:
+        save_parquet(row_parquet_file, rows)
 
     summary = {
         "ingested_at": utc_now_iso(),
         "event_key": args.event_key,
         "event_id": event_id,
+        "mode": mode,
+        "snapshot_label": snapshot_label,
         "message_type": event_payload.get("message_type"),
         "applied_row_count": applied_rows,
         "total_row_count_after": len(rows),
@@ -209,6 +236,8 @@ def main():
         "snapshot_prefix": args.snapshot_prefix,
         "source_name": metadata.get("source_name"),
         "file_event_id": file_event_id if ingest_kind == "file" else None,
+        "state_key": state_key,
+        "row_state_key": row_parquet_key if ingest_kind == "row" else None,
         "event_payload_sha256": hashlib.sha256(json.dumps(event_payload, sort_keys=True).encode("utf-8")).hexdigest(),
     }
 
@@ -220,6 +249,8 @@ def main():
     aws_cp_to_s3(state_file, args.bucket, state_key)
     aws_cp_to_s3(event_ids_file, args.bucket, event_ids_key)
     aws_cp_to_s3(file_ids_file, args.bucket, file_ids_key)
+    if ingest_kind == "row" and applied_rows > 0:
+        aws_cp_to_s3(row_parquet_file, args.bucket, row_parquet_key)
     aws_cp_to_s3(summary_file, args.bucket, summary_key)
 
     print(json.dumps(summary, indent=2))

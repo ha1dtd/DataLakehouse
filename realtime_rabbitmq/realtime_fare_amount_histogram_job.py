@@ -98,6 +98,7 @@ def main():
         calculation = json.load(f)
 
     snapshot_id = str(calculation.get("snapshot_id") or generated.get("snapshot_id") or "")
+    mode = str(calculation.get("mode") or generated.get("mode") or "")
     values = calculation.get("values") or []
     counts = calculation.get("counts") or []
     bin_edges = calculation.get("bin_edges") or [0, 2]
@@ -106,8 +107,8 @@ def main():
     render_histogram(
         values,
         counts,
-        title="Realtime Fare Amount Histogram Demo (RabbitMQ)",
-        subtitle=f"snapshot={snapshot_id} | rows={row_count} | values={values}",
+        title=f"Realtime Fare Amount Histogram Demo ({snapshot_id})",
+        subtitle=f"mode={mode} | folder={snapshot_id} | rows={row_count} | values={values}",
         out_file=chart_file,
         bin_edges=bin_edges,
     )
