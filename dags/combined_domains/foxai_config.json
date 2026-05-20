@@ -1,0 +1,20 @@
+{
+  "MINIO_ENDPOINT": "http://192.168.100.66:9001",
+  "MINIO_ACCESS_KEY": "admin",
+  "MINIO_SECRET_KEY": "12345678",
+  "KAFKA_BOOTSTRAP": "192.168.100.66:9092",
+  "KAFKA_TOPIC": "raw_ingest_events",
+  "KAFKA_BIN": "/opt/confluent/bin",
+  "SPARK_SUBMIT_BIN": "/opt/spark/bin/spark-submit",
+  "SCRIPT_BASE": "/home/ubuntu/daihai_script/dag_combined_domains",
+  "DOMAIN_REGISTRY_FILE": "{SCRIPT_BASE}/domain_registry_v2.json",
+  "INGEST_SOURCES_FILE": "{SCRIPT_BASE}/ingest_sources_kafka_domains.json",
+  "RAW_WAREHOUSE": "s3a://raw/lakehouse/",
+  "BRONZE_WAREHOUSE": "s3a://bronze/lakehouse/",
+  "SILVER_WAREHOUSE": "s3a://silver/lakehouse/",
+  "GOLD_WAREHOUSE": "s3a://gold/lakehouse/",
+  "ERROR_BUCKET": "error",
+  "ERROR_PREFIX_RAW": "raw",
+  "ERROR_PREFIX_BRONZE": "lakehouse/errors/bronze",
+  "MAX_MESSAGES": 100
+}

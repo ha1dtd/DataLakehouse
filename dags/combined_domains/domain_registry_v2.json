@@ -1,0 +1,93 @@
+{
+  "default_domain": "taxi",
+  "default_topic": "general",
+  "domains": {
+    "taxi": {
+      "enabled": true,
+      "raw_bucket": "raw",
+      "bronze_bucket": "bronze",
+      "silver_bucket": "silver",
+      "gold_bucket": "gold",
+      "raw_prefix": "lakehouse/taxi",
+      "bronze_prefix": "lakehouse/taxi",
+      "silver_namespace": "taxi",
+      "gold_namespace": "taxi",
+      "default_topic": "tripdata",
+      "source_patterns": ["taxi", "yellow", "green", "fhv", "fhvhv"],
+      "taxi": {
+        "datasets": {
+          "yellow": {
+            "match_patterns": ["yellow_tripdata_"],
+            "silver_table": "yellow_taxi"
+          },
+          "green": {
+            "match_patterns": ["green_tripdata_"],
+            "silver_table": "green_taxi"
+          },
+          "fhv": {
+            "match_patterns": ["fhv_tripdata_"],
+            "silver_table": "fhv_trip"
+          },
+          "fhvhv": {
+            "match_patterns": ["fhvhv_tripdata_"],
+            "silver_table": "fhvhv_trip"
+          }
+        }
+      }
+    },
+    "hr": {
+      "enabled": true,
+      "raw_bucket": "raw",
+      "bronze_bucket": "bronze",
+      "silver_bucket": "silver",
+      "gold_bucket": "gold",
+      "raw_prefix": "lakehouse/hr",
+      "bronze_prefix": "lakehouse/hr",
+      "silver_namespace": "hr",
+      "gold_namespace": "hr",
+      "default_topic": "hr",
+      "topics": {
+        "hr": {
+          "silver_table": "hr_silver",
+          "gold_table": "hr_summary"
+        }
+      }
+    },
+    "finance": {
+      "enabled": true,
+      "raw_bucket": "raw",
+      "bronze_bucket": "bronze",
+      "silver_bucket": "silver",
+      "gold_bucket": "gold",
+      "raw_prefix": "lakehouse/finance",
+      "bronze_prefix": "lakehouse/finance",
+      "silver_namespace": "finance",
+      "gold_namespace": "finance",
+      "default_topic": "finance",
+      "topics": {
+        "finance": {
+          "silver_table": "finance_silver",
+          "gold_table": "finance_summary"
+        }
+      }
+    },
+    "marketing": {
+      "enabled": true,
+      "raw_bucket": "raw",
+      "bronze_bucket": "bronze",
+      "silver_bucket": "silver",
+      "gold_bucket": "gold",
+      "raw_prefix": "lakehouse/marketing",
+      "bronze_prefix": "lakehouse/marketing",
+      "silver_namespace": "marketing",
+      "gold_namespace": "marketing",
+      "default_topic": "marketing",
+      "topics": {
+        "marketing": {
+          "silver_table": "marketing_silver",
+          "gold_table": "marketing_summary"
+        }
+      }
+    }
+  }
+}

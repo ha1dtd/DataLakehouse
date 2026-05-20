@@ -1,7 +1,0 @@
-{
-  "event_type": "stream_ingest",
-  "event_id": "fare-demo-event-20260513T120500Z",
-  "trip_id": "DEMO-20260513-120500",
-  "fare_amount": 27.0,
-  "event_time": "2026-05-13T12:05:00Z"
-}

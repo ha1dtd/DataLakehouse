@@ -1,0 +1,7 @@
+{
+  "event_type": "stream_ingest",
+  "event_id": "fare-demo-5day-row-0004",
+  "trip_id": "DEMO-5DAY-0004",
+  "fare_amount": 40.0,
+  "event_time": "2026-05-04T09:00:00Z"
+}
