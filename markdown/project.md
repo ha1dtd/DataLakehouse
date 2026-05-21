@@ -11,47 +11,45 @@ Not a rule file. Rules live in the separate rules.md.
 
 ### Primary focus
 
-- Realtime histogram demo for `fare_amount`
-- Current active validation subtrack: `realtime_rabbitmq` now carries the 5-row / 5-day file-vs-row validation path
-- Current validation target is:
-  - exactly 5 rows of data corresponding to 5 days
-  - 2 modes: `file` and `row`
-  - file mode stays as: ingest file → calculate → draw chart
-  - row mode must run incrementally by day: ingest one row, parquet the JSON row for that day, calculate, draw chart for day 1; then repeat through day 5
-  - row mode should produce 5 charts for the 5 incremental days
-  - the final row-mode day-5 chart must match the file-mode final chart
-- Current checkpoint:
-  - user confirmed on `2026-05-20` that the deployed `realtime_rabbitmq` DAG worked after the row-event-id and file-vs-row state-isolation fixes
-  - the remaining explicit confirmation to record is whether `row_day5` output was compared against `file`
-- Active parallel paths now:
-  - Kafka demo flow: inbox files → Kafka → Airflow DAG → MinIO state → Spark histogram snapshot → HTML viewer
-  - RabbitMQ demo flow: transmitter → RabbitMQ → long-lived receiver on namenode → MinIO raw event → Airflow DAG trigger → MinIO state → calculation artifact → chart snapshot
-- Goal: stable end-to-end demo with correct UI behavior, correct 5-day file-vs-row validation behavior, and a batch-vs-realtime comparison path for drift/duplication checking
+- Platform packaging is now the active top priority.
+- Current product direction:
+  - create one customer-facing installer file only
+  - terminal-based interactive flow
+  - NameNode setup runs first, then DataNode setup runs automatically
+  - exact package/runtime versions must stay pinned to the current tested setup scripts
+  - optional login/config values should support blank input falling back to defaults
+- Current implementation checkpoint:
+  - unified installer entrypoint now exists at `scripts/foxai_installer.sh`
+  - premise-specific notes now exist at `scripts/foxai_installer_premise_notes.md`
+  - source-of-truth setup logic remains `scripts/setup_namenode_v5.sh` and `scripts/setup_datanode.sh`
+- Current packaging boundary:
+  - include platform installation, configuration, and cluster bootstrap
+  - exclude FoxAI DAGs, FoxAI job scripts, customer DAGs, and customer job scripts
+- Immediate goal: harden the unified installer against the existing tested manual flow, then define the customer script/template path on top of the installed platform
 
 ### Secondary active track
 
-- Combined-domain medallion pipeline safe-hardening pass
-- Remaining agreed safe fixes:
-  - Fix 4: explicit failure-context logging before re-raise
-  - Fix 5: small observability logs for phase start/end, write targets, cheap counts
+- Customer script/template or extension path after platform installation
+- Licensing is intentionally sequenced after packaging and customer-path work
+- Combined-domain medallion pipeline safe-hardening pass is temporarily on hold
 
 ### Open items
 
-- Confirm the final comparison result for the deployed `realtime_rabbitmq` 5-row / 5-day validation:
-  - inspect existing `demo/file/fare_amount/...` and `demo/row_day1` through `demo/row_day5` artifacts first
-  - explicitly record whether `row_day5` matches the file-mode final chart
-- 1-week taxi batch-vs-realtime validation for `realtime_rabbitmq`:
-  - lock one fixed 1-week taxi dataset and schema
-  - compute batch truth separately
-  - replay the same data incrementally through RabbitMQ
-  - compare final row counts, distinct row keys, and histogram bins for drift / duplicates / misses
-  - include overlap, duplicate resend, and receiver-restart scenarios
-- Packaging task clarification:
-  - package the platform from `setup_namenode_v5.sh` and `setup_datanode.sh`
-  - package scope is install + configure everything from those setup scripts
-  - do not include customer DAGs or customer job scripts in the base package
-  - an example script may be included, but customer-specific scripts remain outside the package
-  - add-on direction remains valid: customer installs the package binary first, then writes scripts, then runs
+- Validate `scripts/foxai_installer.sh` in a real environment against the current tested two-script flow
+- Confirm the installer does not lose any required step from:
+  - `scripts/setup_namenode_v5.sh`
+  - `scripts/setup_datanode.sh`
+- Define the customer-facing template/authoring path after install:
+  - where customer DAGs/scripts live
+  - what example/template, if any, should be included
+  - what remains customer-owned versus platform-owned
+- Keep premise-specific logic explicit for future customer rollout:
+  - Kakao apt mirror override
+  - fixed install paths and hostnames
+  - pinned Java/Hadoop/Spark versions
+- Licensing phase remains later and generic:
+  - simple license check / permission gate
+  - no UI in the current phase
 - PostgreSQL serving-layer integration via Spark / Thrift / JDBC
 - Reproducible realtime streaming baseline metrics
 
@@ -79,6 +77,24 @@ Not a rule file. Rules live in the separate rules.md.
 | Spark Thrift Server  | 10000 | Optional             |
 | Apache Superset      | 8084  | Optional             |
 | Trino                | 8083  | Installed, sidelined |
+
+### External source systems
+
+- HDOS Windows source machine:
+  - host: `192.168.100.78`
+  - remote desktop endpoint: `160.30.252.78:33896`
+  - Windows user: `ehc`
+  - Windows password: `R00T@!@#`
+- HDOS PostgreSQL now verified reachable from the cluster:
+  - host: `192.168.100.78`
+  - port: `5630`
+  - database: `test05052026`
+  - schema in use for current hospital tables: `public`
+  - user: `postgres`
+  - password: currently blank / trust-auth path in use for internal testing
+  - current access note:
+    - Windows PostgreSQL service listens on `0.0.0.0:5630`
+    - `pg_hba.conf` was widened to allow cluster subnet `192.168.100.0/24` during HDOS sample testing
 
 ---
 
@@ -157,6 +173,42 @@ Not a rule file. Rules live in the separate rules.md.
   - replay the identical data incrementally through RabbitMQ as file and/or row events
   - compare final state using exact row counts, distinct row keys, and histogram bin counts
   - run explicit duplicate, overlap, and receiver-restart scenarios to identify whether current dedupe is only transport-level or also business-row safe
+
+### D. HDOS PostgreSQL sample DAG
+
+- DAG id: `hdos_sample`
+- DAG file on namenode: `/home/ubuntu/airflow/dags/hdos_sample.py`
+- Scripts on namenode: `/home/ubuntu/daihai_script/hdos_sample/`
+- Purpose:
+  - prove PostgreSQL -> Spark JDBC -> MinIO/Iceberg -> Superset flow end to end
+- Current verified sample source:
+  - `public.tb_nhanvienlog`
+- Current Iceberg outputs:
+  - raw: `raw_catalog.hdos_sample.tb_nhanvienlog_raw`
+  - bronze: `bronze_catalog.hdos_sample.tb_nhanvienlog_bronze`
+  - silver: `silver_catalog.hdos_sample.tb_nhanvienlog_silver`
+  - gold: `gold_catalog.hdos_sample.tb_nhanvienlog_daily_domain_summary`
+- Current gold meaning:
+  - daily login activity summary by `login_date`, `domain`, and `softversion`
+  - metrics:
+    - `login_count`
+    - `distinct_employee_count`
+    - `distinct_computer_count`
+    - `distinct_ip_count`
+- Runtime outcome on `2026-05-20`:
+  - DAG deployed to namenode
+  - Airflow registered the DAG and task graph
+  - `postgres_to_raw` succeeded after widening PostgreSQL `pg_hba.conf` from only namenode to the full cluster subnet
+  - downstream DAG execution worked and the user confirmed charting/query flow in Superset
+- Confirmed hospital-grade source tables for the next HDOS iteration:
+  - `tb_patientrecord`
+  - `tb_servicedata`
+  - `tb_invoice`
+  - `tb_treatment`
+  - `tb_nhanvien`
+  - `tb_bed`
+- Local findings note:
+  - `dags/hdos_sample/HDOS_SOURCE_FINDINGS.md`
 
 ---
 
@@ -243,6 +295,17 @@ Not a rule file. Rules live in the separate rules.md.
   - Vietnamese operator manual created at `docs/Tai_lieu_huong_dan_van_hanh_Data_Platform.docx`
   - document files consolidated into `docs/`
   - operator-guide generator preserved at `docs/generate_operator_guide_vi.js`
+- Packaging-first product direction clarified and started:
+  - packaging scope narrowed to installation, configuration, and setup only
+  - customer DAGs and customer job scripts are outside the base package
+  - one unified installer entrypoint created at `scripts/foxai_installer.sh`
+  - premise-specific rollout notes recorded at `scripts/foxai_installer_premise_notes.md`
+- HDOS PostgreSQL sample DAG completed and validated:
+  - namenode can reach HDOS PostgreSQL at `192.168.100.78:5630`
+  - Airflow DAG `hdos_sample` deployed under `/home/ubuntu/airflow/dags/hdos_sample.py`
+  - runtime scripts/config deployed under `/home/ubuntu/daihai_script/hdos_sample/`
+  - Spark JDBC package resolution for PostgreSQL was verified at runtime
+  - sample medallion flow to Gold worked and Superset queries/charts were confirmed by the user
 
 ---
 
@@ -250,25 +313,18 @@ Not a rule file. Rules live in the separate rules.md.
 
 ### Near-term
 
-- Read the existing deployed `realtime_rabbitmq` 5-row / 5-day artifacts and explicitly record the final result:
-  - file mode path: `demo/file/fare_amount/...`
-  - row mode paths: `demo/row_day1` through `demo/row_day5`
-  - confirm whether `row_day5` matches the file-mode final chart
-- Build and run the 1-week taxi batch-vs-realtime validation plan for `realtime_rabbitmq`
+- Validate the unified installer `scripts/foxai_installer.sh` against the current tested deployment flow
+- Harden the installer for production use while keeping exact pinned versions from the source scripts
+- Define the customer script/template path after installation
 - Stabilize Kafka KRaft-only startup runbook on namenode
 - Taxi 2025 forecasting (train on 2020–2024, evaluate vs actuals)
-- Combined-domain fix 4: add explicit failure-context logging before re-raise
-- Combined-domain fix 5: add small observability logs for phase start/end, write targets, cheap counts
+- Combined-domain fix 4 and fix 5 remain available to resume later if reprioritized
 
 ### Longer-term
 
 - Licensing system (integrate with other team's API)
-- Binary packaging for Linux distribution:
-  - based on `setup_namenode_v5.sh` and `setup_datanode.sh`
-  - installs and configures the platform only
-  - excludes customer DAGs and customer job scripts from the base package
-  - customer flow is: run package binary first → write scripts → run
-- Plugin SDK (CustomTransformer v1)
+- Binary wrapping/distribution of the unified installer, if a stricter compiled artifact is required after shell-installer validation
+- Customer extension/template SDK
 - Low-latency realtime processing track
 
 ---

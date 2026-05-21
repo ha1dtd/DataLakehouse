@@ -2,6 +2,40 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-20:** HDOS PostgreSQL sample DAG was built, deployed, and validated end to end:
+  - verified PostgreSQL reachability from namenode to `192.168.100.78:5630`
+  - source database in use: `test05052026`
+  - initial working sample table chosen: `public.tb_nhanvienlog`
+  - created local DAG path under `dags/hdos_sample/` with:
+    - `foxai_config.json`
+    - `foxai_config.py`
+    - `postgres_to_raw.py`
+    - `raw_to_bronze.py`
+    - `bronze_to_silver.py`
+    - `silver_to_gold.py`
+    - `hdos_sample.py`
+  - deployed runtime scripts/config to `/home/ubuntu/daihai_script/hdos_sample/`
+  - deployed Airflow DAG to `/home/ubuntu/airflow/dags/hdos_sample.py`
+  - Airflow confirmed DAG registration and task graph for `hdos_sample`
+  - Spark JDBC package resolution for PostgreSQL was verified at runtime (`org.postgresql:postgresql:42.7.3`)
+  - first runtime failure root cause:
+    - PostgreSQL `pg_hba.conf` allowed namenode only, but Spark executors also connected from datanodes
+  - runtime fix applied on the Windows PostgreSQL host:
+    - widened `pg_hba.conf` access to cluster subnet `192.168.100.0/24`
+  - after that fix, `postgres_to_raw` and the DAG flow succeeded
+  - user confirmed Superset could query the Gold table and draw charts successfully
+  - current Gold output is a technical login-activity sample:
+    - `gold_catalog.hdos_sample.tb_nhanvienlog_daily_domain_summary`
+  - confirmed next-step hospital-grade source tables for a richer business sample:
+    - `tb_patientrecord`
+    - `tb_servicedata`
+    - `tb_invoice`
+    - `tb_treatment`
+    - `tb_nhanvien`
+    - `tb_bed`
+  - persistent findings note created at:
+    - `dags/hdos_sample/HDOS_SOURCE_FINDINGS.md`
+
 - **2026-05-20:** `realtime_rabbitmq` 5-day validation path worked on namenode after the May 19 refactor/follow-up fixes:
   - user confirmed the deployed DAG worked
   - runtime path in use is `realtime_rabbitmq`, not `realtime_validate`

@@ -1,0 +1,22 @@
+{
+  "MINIO_ENDPOINT": "http://192.168.100.66:9001",
+  "MINIO_ACCESS_KEY": "admin",
+  "MINIO_SECRET_KEY": "12345678",
+  "SPARK_SUBMIT_BIN": "/opt/spark/bin/spark-submit",
+  "SCRIPT_BASE": "/home/ubuntu/daihai_script/hdos_sample",
+  "RAW_WAREHOUSE": "s3a://raw/lakehouse/",
+  "BRONZE_WAREHOUSE": "s3a://bronze/lakehouse/",
+  "SILVER_WAREHOUSE": "s3a://silver/lakehouse/",
+  "GOLD_WAREHOUSE": "s3a://gold/lakehouse/",
+  "PG_HOST": "192.168.100.78",
+  "PG_PORT": "5630",
+  "PG_DATABASE": "test05052026",
+  "PG_USER": "postgres",
+  "PG_PASSWORD": "",
+  "PG_SOURCE_SCHEMA": "public",
+  "PG_SOURCE_TABLE": "tb_nhanvienlog",
+  "RAW_NAMESPACE": "hdos_sample",
+  "BRONZE_NAMESPACE": "hdos_sample",
+  "SILVER_NAMESPACE": "hdos_sample",
+  "GOLD_NAMESPACE": "hdos_sample"
+}
