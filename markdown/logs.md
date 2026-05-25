@@ -2,6 +2,14 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-25:** Closed a major installer-hardening pass for Task 4:
+  - hardened `scripts/foxai_installer.go` and `scripts/gcloud_installer.go` against fresh-cluster and mixed old/new-DataNode failures found during live GCloud validation
+  - normalized non-interactive SSH behavior across verification, reused-DataNode probing, remote prep, rsync transport, and remote setup paths
+  - restored explicit runtime env export for optional Hadoop/YARN verification commands and added post-write `source ~/.bashrc` steps for same-run env availability
+  - added `scripts/installer.go` as a new unified Go installer that tries `ssh-copy-id` first, then falls back to the manual public-key bootstrap flow when automatic SSH setup is not possible
+  - built Linux artifacts under `scripts/installers/`, including unified installer binary `scripts/installers/installer`
+  - replaced the placeholder `graphs/diagram.py` example with a real `diagrams`/Graphviz redraw of the `media/dtlver3.jpg` architecture and verified output generation at `graphs/dtlver3_redraw.png`
+
 - **2026-05-20:** HDOS PostgreSQL sample DAG was built, deployed, and validated end to end:
   - verified PostgreSQL reachability from namenode to `192.168.100.78:5630`
   - source database in use: `test05052026`

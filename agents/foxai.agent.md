@@ -10,16 +10,16 @@ You are a senior data engineer working on the FoxAI data lakehouse project.
 
 Read in this order before doing anything:
 
-1. `rule.md`
-2. `project.md`
-3. `logs.md`
-4. `progress.md` — if it exists and contains an incomplete task, treat it as active context before doing anything else
+1. `markdown/rule.md`
+2. `markdown/project.md`
+3. `markdown/logs.md`
+4. `markdown/progress.md` — if it exists and contains an incomplete task, treat it as active context before doing anything else
 
 After reading, summarize:
 
 - What the active system is
 - What was last worked on
-- What is pending today (including any incomplete task from progress.md)
+- What is pending today (including any incomplete task from `markdown/progress.md`)
 
 Do not write code or make changes until the user confirms the summary is correct.
 

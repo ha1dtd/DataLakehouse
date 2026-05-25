@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && unified_installer
 
 package main
 
@@ -278,7 +278,7 @@ func (i *installer) ensureBootstrapDependenciesForMode() error {
 }
 
 func (i *installer) collectInputs() error {
-	fmt.Println("=== FOXAI SINGLE-FILE INSTALLER (GO) ===")
+	fmt.Println("=== FOXAI UNIFIED INSTALLER (GO) ===")
 	fmt.Printf("Mode: %s\n", i.mode)
 	if i.mode == modeDryRun {
 		fmt.Println("Dry-run mode will collect inputs and print the execution plan only. No install commands will run.")
@@ -413,7 +413,7 @@ func (i *installer) printDryRunPlan() error {
 	for _, step := range []string{
 		"fresh-install guard",
 		"SSH key generation / authorized_keys check",
-		"ssh-copy-id to all DataNodes",
+		"ssh-copy-id to all DataNodes, then manual SSH bootstrap fallback if needed",
 		"NOPASSWD sudo check/config on all DataNodes",
 		"optional Kakao apt mirror override",
 		"base package install check",
@@ -714,7 +714,7 @@ func (i *installer) addSummary(target, component string, status summaryStatus, d
 }
 
 func (i *installer) writeManifest(runErr error) error {
-	dir := filepath.Join(i.baseHome, ".foxai-installer")
+	dir := filepath.Join(i.baseHome, ".foxai-unified-installer")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -1042,18 +1042,80 @@ func (i *installer) ensureLocalSSHKey() error {
 }
 
 func (i *installer) copySSHKeyToAllDataNodes() error {
-	section("SSH COPY TO ALL DNs")
+	section("SSH BOOTSTRAP (ALL DNs)")
+	failedIPs := i.passwordlessSSHFailures(i.cfg.AllDataNodeIPs())
+	if len(failedIPs) == 0 {
+		fmt.Println("  - Passwordless SSH already verified on all DataNodes")
+		return nil
+	}
+	fmt.Println("  - Trying automatic ssh-copy-id bootstrap first")
 	for _, ip := range i.cfg.AllDataNodeIPs() {
+		if !containsString(failedIPs, ip) {
+			continue
+		}
 		target := fmt.Sprintf("%s@%s", i.cfg.DataNodeUser, ip)
-		if err := runCommand("", os.Stdin, os.Stdout, os.Stderr, "ssh-copy-id", "-f", target); err != nil {
+		if err := runCommand("", os.Stdin, os.Stdout, os.Stderr, "ssh-copy-id", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", "-f", target); err != nil {
 			if verifyErr := runCommand("", nil, io.Discard, io.Discard, "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", target, "true"); verifyErr == nil {
 				fmt.Printf("  - %s already reachable with the current key; continuing\n", ip)
 				continue
 			}
-			return fmt.Errorf("ssh-copy-id failed for %s and passwordless ssh is still unavailable: %w", ip, err)
+			fmt.Printf("  - %s: ssh-copy-id did not complete cleanly; will check manual fallback if still needed\n", ip)
 		}
 	}
+
+	failedIPs = i.passwordlessSSHFailures(i.cfg.AllDataNodeIPs())
+	if len(failedIPs) == 0 {
+		fmt.Println("  - Automatic ssh-copy-id bootstrap verified on all DataNodes")
+		return nil
+	}
+
+	publicKeyPath := filepath.Join(i.baseHome, ".ssh", "id_rsa.pub")
+	pubKeyBytes, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key %s: %w", publicKeyPath, err)
+	}
+	pubKey := strings.TrimSpace(string(pubKeyBytes))
+
+	fmt.Printf("Passwordless SSH is still missing for: %s\n", strings.Join(failedIPs, ", "))
+	fmt.Println("Automatic ssh-copy-id was not sufficient for every node.")
+	fmt.Println("Run the following on EACH remaining DataNode terminal before continuing:")
+	fmt.Println("  mkdir -p ~/.ssh")
+	fmt.Println("  chmod 700 ~/.ssh")
+	fmt.Println("  touch ~/.ssh/authorized_keys")
+	fmt.Println("  chmod 600 ~/.ssh/authorized_keys")
+	fmt.Println("  nano ~/.ssh/authorized_keys")
+	fmt.Println("Paste this NameNode public key into the DataNode authorized_keys file:")
+	fmt.Println()
+	fmt.Println(pubKey)
+	fmt.Println()
+	fmt.Println("After pasting the key on every remaining DataNode, save the file and return here.")
+	if _, err := i.readPrompt("Press Enter to verify passwordless SSH to all DataNodes..."); err != nil {
+		return err
+	}
+
+	failedIPs = i.passwordlessSSHFailures(i.cfg.AllDataNodeIPs())
+	for _, ip := range i.cfg.AllDataNodeIPs() {
+		if containsString(failedIPs, ip) {
+			fmt.Printf("  - %s: passwordless SSH not ready\n", ip)
+			continue
+		}
+		fmt.Printf("  - %s: passwordless SSH verified\n", ip)
+	}
+	if len(failedIPs) > 0 {
+		return fmt.Errorf("passwordless SSH is still unavailable for: %s", strings.Join(failedIPs, ", "))
+	}
 	return nil
+}
+
+func (i *installer) passwordlessSSHFailures(targetIPs []string) []string {
+	failedIPs := make([]string, 0)
+	for _, ip := range targetIPs {
+		target := fmt.Sprintf("%s@%s", i.cfg.DataNodeUser, ip)
+		if err := runCommand("", nil, io.Discard, io.Discard, "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", target, "true"); err != nil {
+			failedIPs = append(failedIPs, ip)
+		}
+	}
+	return failedIPs
 }
 
 func (i *installer) ensureDataNodesNoPasswordSudo() error {
@@ -2684,7 +2746,7 @@ printf '%s %s\n' "$CORES" "$MEM_GB"
 	if sshTarget == "" {
 		err = runCommand("", strings.NewReader(script), &stdout, os.Stderr, "bash", "-s")
 	} else {
-		err = runCommand("", strings.NewReader(script), &stdout, os.Stderr, "ssh", sshTarget, "bash", "-s")
+		err = runCommand("", strings.NewReader(script), &stdout, os.Stderr, "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", sshTarget, "bash", "-s")
 	}
 	if err != nil {
 		return 0, 0, err
@@ -2957,6 +3019,15 @@ func fileExists(path string) bool {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func maxInt(a, b int) int {

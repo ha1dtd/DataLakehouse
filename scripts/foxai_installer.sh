@@ -16,9 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PINNED_HADOOP_VERSION="3.3.6"
 PINNED_SPARK_ARTIFACT="spark-3.5.8-bin-hadoop3"
 PINNED_JAVA11_PACKAGE="temurin-11-jdk"
-PINNED_JAVA17_PACKAGE="temurin-17-jdk"
 PINNED_JAVA11_HOME="/usr/lib/jvm/temurin-11-jdk-amd64"
-PINNED_JAVA17_HOME="/usr/lib/jvm/temurin-17-jdk-amd64"
 DEFAULT_MINIO_ENDPOINT="192.168.100.66:9001"
 DEFAULT_MINIO_ACCESS_KEY="admin"
 DEFAULT_MINIO_SECRET_KEY="12345678"
@@ -42,7 +40,6 @@ BASE_HOME="/home/$NN_USER"
 HADOOP_HOME="$BASE_HOME/hadoop"
 SPARK_HOME="/opt/spark"
 JAVA11_HOME="$PINNED_JAVA11_HOME"
-JAVA17_HOME="$PINNED_JAVA17_HOME"
 HOSTS_BEGIN="# >>> FOXAI CLUSTER HOSTS >>>"
 HOSTS_END="# <<< FOXAI CLUSTER HOSTS <<<"
 
@@ -179,7 +176,6 @@ collect_inputs() {
     echo "  - Hadoop: $PINNED_HADOOP_VERSION"
     echo "  - Spark:  $PINNED_SPARK_ARTIFACT"
     echo "  - Java 11 package: $PINNED_JAVA11_PACKAGE"
-    echo "  - Java 17 package: $PINNED_JAVA17_PACKAGE"
     echo ""
 
     NN_PRIVATE_IP="$(prompt_ip "Namenode private IP")"
@@ -331,16 +327,6 @@ run_namenode_setup() {
         echo "  - Installed"
     fi
     [ -d "$JAVA11_HOME" ] || { echo "JAVA_HOME invalid"; exit 1; }
-
-    section "JAVA 17"
-    if [ -d "$JAVA17_HOME" ]; then
-        echo "  - Already installed"
-    else
-        ensure_adoptium_repo
-        sudo apt update
-        sudo apt install -y "$PINNED_JAVA17_PACKAGE"
-        echo "  - Installed"
-    fi
 
     section "HADOOP"
     if [ -x "$HADOOP_HOME/bin/hdfs" ]; then

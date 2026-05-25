@@ -138,18 +138,6 @@ fi
 [ -d "$JAVA11_HOME" ] || { echo "JAVA_HOME invalid"; exit 1; }
 
 echo "===================="
-echo "STEP: JAVA 17"
-echo "===================="
-JAVA17_HOME="/usr/lib/jvm/temurin-17-jdk-amd64"
-if [ -d "$JAVA17_HOME" ]; then
-    echo "  - Already installed"
-else
-    sudo apt update
-    sudo apt install -y temurin-17-jdk
-    echo "  - Installed"
-fi
-
-echo "===================="
 echo "STEP: HADOOP"
 echo "===================="
 if [ -x "$HADOOP_HOME/bin/hdfs" ]; then

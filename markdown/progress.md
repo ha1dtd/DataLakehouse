@@ -56,16 +56,18 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
 
 **Mode:** Refactor
 
-**Current Phase:** Resumed on 2026-05-21. A first native Linux Go installer source now exists at `scripts/foxai_installer.go` while `scripts/foxai_installer.sh` remains the behavioral reference path. The Go version mirrors the current combined NameNode/DataNode flow at a high level and adds an end-of-run hardware collection prompt for Spark recommendation output.
+**Current Phase:** Active on 2026-05-25 for installer lifecycle hardening beyond fresh-only bootstrap. Fresh-cluster install on the GCloud validation path now works, and the latest code change adds first-class reused-DataNode handling for the case where a new NameNode is created but one or more old DataNode VMs still contain previous HDFS DataNode storage state.
 
-**Next Exact Step:** Exercise and harden `scripts/foxai_installer.sh` against the current tested deployment flow:
-1. Audit `scripts/foxai_installer.go` step-by-step against `scripts/setup_namenode_v5.sh` and `scripts/setup_datanode.sh`
-2. Close any remaining parity gaps before treating the Go path as the customer-facing installer
-3. Validate the new end-of-run hardware prompt flow:
-   - option 1: auto probe hardware
-   - option 2: manual entry
-   - print recommended Spark defaults only, without editing DAG/job configs
-4. Later, build a stripped Linux binary from the Go source for customer delivery after parity and runtime validation are complete
+**Next Exact Step:** Validate the reused-DataNode lifecycle on a real mixed cluster scenario:
+1. prepare one reused DataNode that still has old `~/hadoopdata/datanode/current/VERSION`
+2. prepare one fresh DataNode
+3. run `install` against a new NameNode with both nodes
+4. confirm the installer:
+   - reads the new local NameNode `clusterID`
+   - classifies fresh / compatible / conflicting / unreadable nodes correctly
+   - supports bulk wipe/skip/review flow
+   - rewrites local hosts/workers/HDFS config to the final active node set after skip decisions
+5. verify that wiped reused nodes join cleanly and skipped nodes are excluded from the active cluster shape for that run
 
 **Files In Scope**
 
@@ -89,7 +91,7 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
   - combines the current tested NameNode flow and automatic remote DataNode execution into one executable shell installer
 
 - `scripts/foxai_installer.go`
-  - status: new | verified: local compile
+  - status: in progress | verified: local compile
   - first native Linux Go installer source for the packaging track
   - preserves the one-file interactive installer shape
   - includes:
@@ -101,10 +103,151 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
     - safe test modes:
       - `--dry-run` prints the planned NameNode/DataNode execution flow only
       - `--recommend-only` skips install steps and runs only the hardware/Spark recommendation flow
+  - current hardening target:
+    - behave like a production installer on an existing FoxAI cluster, not only like a translated bootstrap script
+  - current on-disk change in this pass:
+    - MinIO endpoint prompt now defaults from the entered NameNode IP as `<namenode-ip>:9001` instead of a fixed old on-prem IP
+    - added first-step bootstrap dependency check/install before the normal mode flow
+    - bootstrap step now checks for very base local tool dependencies and installs missing ones with `apt-get` before the existing installer logic runs
+    - corrected the bootstrap privilege regression after GCloud testing:
+      - local privileged commands now use `root if already root, else sudo if available`
+      - `sudo` is not treated as a bootstrap dependency package
+      - the first-step package install no longer tries plain `apt` as a normal OS Login user
+    - corrected fresh-VM workers-file handling:
+      - stock Hadoop `workers` content of `localhost` is now treated as a safe default baseline in install mode instead of drift
+    - corrected fresh-VM sync ordering:
+      - the installer now ensures `rsync` exists on each DataNode before the NameNode tries to `rsync` Hadoop and Spark there
+    - corrected remote base-package ordering:
+      - immediately after passwordless SSH and NOPASSWD sudo are ready, the NameNode now SSHes into every DataNode and installs the full DataNode base package set before continuing with local NameNode bootstrap and file sync
+    - corrected install-mode rerun behavior:
+      - if the NameNode was already formatted by a previous partial install, install mode now treats that as a resumable run and continues through the idempotent steps instead of hard-blocking
+    - corrected remote sync permissions:
+      - NameNode-to-DataNode `rsync` now runs the receiver side as `sudo rsync`, so syncing into privileged paths like `/opt/spark` no longer fails on a fresh DataNode
+      - Hadoop sync remains user-owned under `/home/<user>/hadoop`, while Spark sync uses elevated receiver mode plus remote `chown` normalization for `/opt/spark`
+    - corrected install-mode drift handling:
+      - managed drift in install mode no longer hard-stops immediately
+      - for drifted managed files/blocks, the installer now prompts with 4 options:
+        - stop
+        - replace with installer value
+        - enter custom replacement content
+        - skip this step
+    - corrected remote shell execution UX:
+      - non-interactive remote DataNode bootstrap/setup commands no longer force a TTY, so the remote script is not echoed back line-by-line into the terminal
+    - implemented reused-DataNode lifecycle handling in `install`:
+      - after NameNode format/verify, the installer reads the local NameNode `clusterID`
+      - each target DataNode is probed for `~/hadoopdata/datanode/current/VERSION`
+      - nodes are classified as:
+        - fresh
+        - compatible
+        - conflicting
+        - unreadable
+      - conflicting/unreadable nodes now support bulk resolution:
+        - stop
+        - wipe all reused/unreadable DataNodes and reuse them
+        - skip all reused/unreadable DataNodes for this run
+        - review one by one
+      - per-node review supports:
+        - stop
+        - wipe old HDFS DataNode storage and reuse
+        - skip this node
+        - keep old storage and force continue (unsafe)
+      - wipe action removes only `~/hadoopdata/datanode` and preserves packages, Java, Hadoop/Spark files, SSH, `/etc/hosts`, and shell environment
+      - if nodes are skipped, the active install target set is reduced before sync and remote setup, and local managed hosts/Hadoop config is rewritten to the final active node set in the same run
+    - current bootstrap dependency set for the main installer:
+      - `python3`
+      - `openssh-client` for `ssh` and `ssh-copy-id`
+      - `rsync`
+      - `wget`
+      - `tar`
+    - added read-only `--preflight`
+    - added guarded local config evaluation for `/etc/hosts`, Hadoop XML files, workers, and `hadoop-env.sh`
+    - changed install behavior so exact managed state skips while drift raises explicit terminal errors
+    - changed existing DataNode handling from default rsync reconciliation to read-only verification in install mode
+    - softened `ssh-copy-id` handling by verifying passwordless SSH before failing
+
+- `scripts/gcloud_installer.go`
+  - status: in progress | verified: local compile
+  - separate GCloud-oriented Go installer variant
+  - current on-disk change in this pass:
+    - MinIO endpoint prompt now defaults from the entered NameNode IP as `<namenode-ip>:9001` instead of a fixed old on-prem IP
+    - added first-step bootstrap dependency check/install before the normal mode flow
+    - bootstrap step now checks for very base local tool dependencies and installs missing ones with `apt-get` before the existing installer logic runs
+    - corrected the bootstrap privilege regression after GCloud testing:
+      - local privileged commands now use `root if already root, else sudo if available`
+      - `sudo` is not treated as a bootstrap dependency package
+      - the first-step package install no longer tries plain `apt` as a normal OS Login user
+    - corrected the manual SSH bootstrap UX:
+      - reruns now verify passwordless SSH first and skip the key-print/paste prompt entirely when SSH is already ready on all DataNodes
+    - corrected fresh-VM workers-file handling:
+      - stock Hadoop `workers` content of `localhost` is now treated as a safe default baseline in install mode instead of drift
+    - corrected fresh-VM sync ordering:
+      - the installer now ensures `rsync` exists on each DataNode before the NameNode tries to `rsync` Hadoop and Spark there
+    - corrected remote base-package ordering:
+      - immediately after passwordless SSH and NOPASSWD sudo are ready, the NameNode now SSHes into every DataNode and installs the full DataNode base package set before continuing with local NameNode bootstrap and file sync
+    - corrected install-mode rerun behavior:
+      - if the NameNode was already formatted by a previous partial install, install mode now treats that as a resumable run and continues through the idempotent steps instead of hard-blocking
+    - corrected remote sync permissions:
+      - NameNode-to-DataNode `rsync` now runs the receiver side as `sudo rsync`, so syncing into privileged paths like `/opt/spark` no longer fails on a fresh DataNode
+      - Hadoop sync remains user-owned under `/home/<user>/hadoop`, while Spark sync uses elevated receiver mode plus remote `chown` normalization for `/opt/spark`
+    - corrected install-mode drift handling:
+      - managed drift in install mode no longer hard-stops immediately
+      - for drifted managed files/blocks, the installer now prompts with 4 options:
+        - stop
+        - replace with installer value
+        - enter custom replacement content
+        - skip this step
+    - corrected remote shell execution UX:
+      - non-interactive remote DataNode bootstrap/setup commands no longer force a TTY, so the remote script is not echoed back line-by-line into the terminal
+    - implemented reused-DataNode lifecycle handling in `install`:
+      - after NameNode format/verify, the installer reads the local NameNode `clusterID`
+      - each target DataNode is probed for `~/hadoopdata/datanode/current/VERSION`
+      - nodes are classified as:
+        - fresh
+        - compatible
+        - conflicting
+        - unreadable
+      - conflicting/unreadable nodes now support bulk resolution:
+        - stop
+        - wipe all reused/unreadable DataNodes and reuse them
+        - skip all reused/unreadable DataNodes for this run
+        - review one by one
+      - per-node review supports:
+        - stop
+        - wipe old HDFS DataNode storage and reuse
+        - skip this node
+        - keep old storage and force continue (unsafe)
+      - wipe action removes only `~/hadoopdata/datanode` and preserves packages, Java, Hadoop/Spark files, SSH, `/etc/hosts`, and shell environment
+      - if nodes are skipped, the active install target set is reduced before sync and remote setup, and local managed hosts/Hadoop config is rewritten to the final active node set in the same run
+    - current bootstrap dependency set for the GCloud installer:
+      - `python3`
+      - `openssh-client` for `ssh`
+      - `rsync`
+      - `wget`
+      - `tar`
+    - replaced `ssh-copy-id` bootstrap with a manual pause-and-verify flow
+    - prints the NameNode public key for copy/paste into each DataNode `authorized_keys`
+    - prints the required DataNode-side `~/.ssh` permission commands
+    - waits for user confirmation, then verifies passwordless SSH to all target DataNodes before continuing
+    - writes its manifest under `~/.foxai-gcloud-installer/last-run.json`
+
+- `scripts/installers/foxai_installer`
+  - status: built | verified: local artifact
+  - Linux x86-64 binary compiled from `scripts/foxai_installer.go`
+  - intended handoff artifact for testing the main installer path on Linux hosts
+  - latest rebuild on 2026-05-25 after restoring root-or-sudo bootstrap handling:
+    - sha256: `885cd69e20b6efcf07453662ed28cf5fe4e395a243ccd387291377e60d9ada9d`
+
+- `scripts/installers/gcloud_installer`
+  - status: built | verified: local artifact
+  - Linux x86-64 binary compiled from `scripts/gcloud_installer.go`
+  - intended handoff artifact for testing on GCloud VMs
+  - latest rebuild on 2026-05-25 after restoring root-or-sudo bootstrap handling:
+    - sha256: `f259fdd97526ed16e3455f50a938ab2859b292ab1eba8ebec6976c8e68fa217e`
 
 - `scripts/foxai_installer_premise_notes.md`
-  - status: present | verified: local
+  - status: updated | verified: local
   - small note documenting premise-specific logic and pinned versions inherited from the source scripts
+  - now reflects Java 11 as the only managed Java runtime in the installer family
 
 **Current On-Disk Truth**
 
@@ -129,17 +272,198 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
 - Optional credentials/settings should support `blank => default` behavior where current scripts already provide defaults.
 - A real unified installer entrypoint now exists at `scripts/foxai_installer.sh`.
 - A first native Go installer source now also exists at `scripts/foxai_installer.go`.
+- A separate GCloud bootstrap variant now also exists at `scripts/gcloud_installer.go`.
 - Current installer behavior:
   - one combined terminal prompt flow
-  - exact pinned Hadoop/Spark/Java versions from the current setup scripts
+  - exact pinned Hadoop/Spark/Java 11 versions from the current setup scripts
   - current MinIO defaults with blank-input fallback
   - optional Kakao mirror override kept explicit as a premise-specific choice
   - local NameNode setup followed by automatic remote DataNode setup
+- Current GCloud bootstrap behavior:
+  - NameNode key generation/check still happens locally first
+  - installer then pauses and prints the exact public key for manual paste into each DataNode `~/.ssh/authorized_keys`
+  - passwordless SSH is verified before any remote DataNode setup continues
 - Current Go installer direction:
   - customer-facing path is intended to become a single Linux binary so customers do not receive readable shell source
   - `foxai_installer.go` currently uses local/remote command orchestration to mirror the tested shell behavior
   - after cluster setup completes, it prompts for hardware collection mode and prints recommended Spark settings
+  - current hardening gap:
+    - install mode still contains bootstrap-style mutation points that are too aggressive for an already-installed cluster unless the desired state is matched exactly
+  - latest on-disk productization pass on 2026-05-22:
+    - added new top-level modes:
+      - `--repair`
+      - `--reconcile`
+    - added installer manifest output:
+      - `~/.foxai-installer/last-run.json`
+    - added target DataNode selection prompt for existing-cluster mutation modes
+    - added confirm-before-mutation flow for `repair` and `reconcile`
+    - changed Hadoop config writers so:
+      - `install` still blocks on drift
+      - `repair` and `reconcile` overwrite FoxAI-managed drift after user confirmation
+    - added post-mutation verification path:
+      - optional `start-dfs.sh && start-yarn.sh`
+      - `hdfs getconf -confKey dfs.replication`
+      - local `jps`
+      - `yarn node -list`
+    - added printed summary entries plus manifest serialization for run outcome tracking
+  - Current verification checkpoint after the first code edit in this pass:
+  - `gofmt -w scripts/foxai_installer.go` passed
+  - `go build -o /tmp/foxai_installer_check scripts/foxai_installer.go` passed
+  - local runtime execution of the read-only modes was not possible on this workstation because the installer intentionally exits outside Linux (`this installer only supports Linux`)
+  - Linux-targeted build verification passed:
+    - `GOOS=linux GOARCH=amd64 go build -o /tmp/foxai_installer_linux_amd64 scripts/foxai_installer.go`
+    - resulting artifact is an ELF x86-64 Linux binary
+- Current install-first contract refactor on 2026-05-22:
+  - `install` mode is now explicitly treated as fresh-cluster bootstrap only
+  - current code changes in `scripts/foxai_installer.go`:
+    - added fresh-install guard:
+      - blocks install if any `ExistingNodeIPs` are provided
+      - blocks install if Namenode already appears formatted
+    - changed Namenode `.bashrc` handling to a FoxAI-managed env block instead of broad append/grep logic
+    - changed DataNode `.bashrc` handling to the same FoxAI-managed env block style
+    - changed DataNode `/etc/hosts` handling from minimal local block to full FoxAI cluster block
+    - changed local `/etc/hosts` managed block handling to replace/update the FoxAI block rather than treating block drift as fatal in fresh install mode
+    - simplified DataNode sync path back to full sync across install-target nodes because existing-cluster reconciliation is no longer part of `install`
+  - verification after this refactor:
+    - `gofmt -w scripts/foxai_installer.go` passed again
+    - `go build -o /tmp/foxai_installer_check scripts/foxai_installer.go` passed again
+  - verification after the full-product mode wiring on 2026-05-22:
+    - `gofmt -w scripts/foxai_installer.go` passed
+    - `go build -o /tmp/foxai_installer_check scripts/foxai_installer.go` passed
+  - deploy checkpoint on 2026-05-22:
+    - pushed source to Namenode:
+      - `/home/ubuntu/daihai_script/install_script/foxai_installer.go`
+    - pushed Linux binary to Namenode:
+      - `/home/ubuntu/daihai_script/install_script/foxai-installer`
+    - remote verification:
+      - `ls -l` confirms file present on Namenode
+      - `sha256`:
+        - `31751b367bf092a600b7b1f419f5b760b9b4c4defa0fb8e0413574279af93f1b`
+        - binary: `92c0a85fa9e6c97c1c8993bfb652a0c4222b3d8aae6e53ca27feeb2d53740120`
+  - follow-up patch after first live `--preflight` run on 2026-05-22:
+    - fixed incorrect expected `dfs.datanode.data.dir` path generation in Go installer
+      - was incorrectly deriving `file:///ubuntu/...`
+      - now derives `file:///home/<user>/...`
+    - relaxed local `.bashrc` preflight evaluation so legacy correct env lines are accepted even before migrating into the new FoxAI managed block format
+    - re-pushed updated Namenode artifacts:
+      - source sha256: `742e41bd94b0a855553d4ec850e7e9f5527e547255c3dbea8e4c36b475ecffc2`
+      - binary sha256: `b521c4b302a319e1d4aeaf2cd198298e76bd7d424c330e4d912fa8d425de7c49`
+- Current live-cluster audit checkpoint on 2026-05-22:
+  - Namenode host state:
+    - `/home/ubuntu/hadoop`, `/opt/spark`, and `/home/ubuntu/hadoopdata` exist
+    - `.bashrc` contains the full FoxAI Hadoop/Spark env block including `HADOOP_SSH_OPTS` and `PDSH_RCMD_TYPE`
+    - `/etc/hosts` contains the full 1 Namenode + 5 DataNode FoxAI block
+    - Hadoop XML files and `workers` file are present and cluster-consistent except for replication
+  - Runtime state:
+    - `yarn node -list` shows 5 running DataNodes
+    - `hdfs getconf -confKey dfs.replication` returns `2`
+  - DataNode1 host state:
+    - `/home/ubuntu/hadoop`, `/opt/spark`, and `/home/ubuntu/hadoopdata/datanode` exist
+    - passwordless sudo works
+    - `.bashrc` has Java/Hadoop/Spark exports but is missing `HADOOP_SSH_OPTS` and `PDSH_RCMD_TYPE`
+    - `/etc/hosts` already contains the full FoxAI block, not the minimal temporary block described in `setup_datanode.sh`
+    - Hadoop XML files match the Namenode copies, including `dfs.replication=2`
+- Immediate hotfix opened on 2026-05-22:
+  - user wants the live cluster default HDFS replication restored from `2` to `3`
+  - planned scope:
+    - Namenode `/home/ubuntu/hadoop/etc/hadoop/hdfs-site.xml`
+    - synced Hadoop config on DataNodes
+  - planned verification:
+    - inspect exact Namenode file before edit
+    - update only `dfs.replication`
+    - sync Hadoop config to DataNodes
+    - verify with `hdfs getconf -confKey dfs.replication`
+  - exact change made:
+    - changed `<dfs.replication>` from `2` to `3` in Namenode `/home/ubuntu/hadoop/etc/hadoop/hdfs-site.xml`
+    - created backup `/home/ubuntu/hadoop/etc/hadoop/hdfs-site.xml.bak_20260522_rep2`
+    - synced the updated `hdfs-site.xml` to `datanode1` through `datanode5`
+  - verification status:
+    - Namenode file now shows `dfs.replication=3`
+    - all five DataNodes now show `dfs.replication=3`
+    - `hdfs getconf -confKey dfs.replication` returns `3` on Namenode
+    - `hdfs getconf -confKey dfs.replication` also returns `3` from `datanode1`
+  - note:
+    - this fixes the default replication for new HDFS clients/config consumers
+    - it does not by itself force existing files already written at replication `2` to be re-replicated
 - The old plan-only prototype file was removed so `scripts/foxai_installer.sh` is the active single truth file for this packaging task.
+- Installer hardening updates on 2026-05-25:
+  - `scripts/gcloud_installer.go` was added as a separate Go entrypoint for GCloud-like environments where SSH trust must be bootstrapped manually on each DataNode
+  - Java 17 installation was removed from:
+    - `scripts/foxai_installer.go`
+    - `scripts/gcloud_installer.go`
+    - `scripts/foxai_installer.sh`
+    - `scripts/setup_namenode_v5.sh`
+    - `scripts/foxai_installer_premise_notes.md`
+  - Java 11 is now the only managed Java runtime in the installer family
+- Local artifact build checkpoint on 2026-05-25:
+  - created output folder:
+    - `scripts/installers/`
+  - built Linux artifact:
+    - `scripts/installers/foxai_installer`
+  - artifact verification:
+    - file type: ELF 64-bit LSB executable, x86-64
+    - sha256: `085ced68c0fe8fa75cdeb5e49fe228f17e112ee1690ffbee549b6c736a3bc846`
+  - built Linux artifact:
+    - `scripts/installers/gcloud_installer`
+  - artifact verification:
+    - file type: ELF 64-bit LSB executable, x86-64
+    - sha256: `2723c69932395f555ead341c951be555c7294506297520429742f728ca44e925`
+- Bootstrap-dependency gate update on 2026-05-25:
+  - both Go installers now run a new first step named `BOOTSTRAP DEPENDENCIES` before collecting the rest of the normal install flow
+  - that step installs missing base commands the installers themselves assume exist, instead of failing immediately on a fresh VM
+  - files changed:
+    - `scripts/foxai_installer.go`
+    - `scripts/gcloud_installer.go`
+  - verification:
+    - `gofmt -w scripts/foxai_installer.go scripts/gcloud_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/foxai_installer scripts/foxai_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/gcloud_installer scripts/gcloud_installer.go` passed
+- Bootstrap first-step sudo removal on 2026-05-25:
+  - removed `sudo` from the `BOOTSTRAP DEPENDENCIES` step in both Go installers
+  - first-step package install now invokes `apt-get` directly instead of `sudo apt-get`
+  - files changed:
+    - `scripts/foxai_installer.go`
+    - `scripts/gcloud_installer.go`
+  - verification:
+    - `gofmt -w scripts/foxai_installer.go scripts/gcloud_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/foxai_installer scripts/foxai_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/gcloud_installer scripts/gcloud_installer.go` passed
+- Local/bootstrap sudo command removal on 2026-05-25:
+  - removed literal `sudo` command prefixes from the local/bootstrap package-management and filesystem mutation commands in both Go installers
+  - changed local/bootstrap command paths to direct:
+    - `apt update`
+    - `apt install`
+    - `sed -i`
+    - `ln -sf`
+    - `gpg --dearmor`
+    - direct writes to `/etc/apt/sources.list.d/...`
+    - `mv`
+    - `chown`
+    - direct `python3` for the local `/etc/hosts` rewrite helper
+  - also removed `sudo` from the embedded remote DataNode bootstrap script’s package/bootstrap commands before its normal package setup continues
+  - rebuilt installer artifacts:
+    - `scripts/installers/foxai_installer`
+      - sha256: `a1d6fa9cbec321e73b28f58164618b5147456fe642c5b6c65eb44bf9c4209177`
+    - `scripts/installers/gcloud_installer`
+      - sha256: `eeb138f4cdd643b474c131a5e236ab94680bff837682cb0a6abff1ca427b39ac`
+  - remaining `sudo` references are now limited to the explicit remote DataNode sudo-check / NOPASSWD logic and helper text, not the local/bootstrap command prefixes that were breaking at startup
+- MinIO default UX fix on 2026-05-25:
+  - both Go installers now derive the MinIO endpoint default from the entered NameNode IP:
+    - `<namenode-ip>:9001`
+  - files changed:
+    - `scripts/foxai_installer.go`
+    - `scripts/gcloud_installer.go`
+  - verification:
+    - `gofmt -w scripts/foxai_installer.go scripts/gcloud_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/foxai_installer scripts/foxai_installer.go` passed
+    - `GOOS=linux GOARCH=amd64 go build -o scripts/installers/gcloud_installer scripts/gcloud_installer.go` passed
+- Startup memory path correction on 2026-05-25:
+  - `agents/foxai.agent.md` now points startup reads to:
+    - `markdown/rule.md`
+    - `markdown/project.md`
+    - `markdown/logs.md`
+    - `markdown/progress.md`
+  - `markdown/rule.md` now explicitly treats `markdown/progress.md` as the session state file instead of a root-level `progress.md`
 
 **Risks**
 
@@ -152,7 +476,9 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
 - The Go installer is not yet parity-validated against the full tested shell flow, so it is not ready to replace the shell reference path yet.
 - The current safe test path on a live cluster is to use `--dry-run` or `--recommend-only`, not the full install mode.
 - The current customer-delivery intent is a stripped Linux binary built from Go, but the binary packaging and runtime validation steps have not been completed yet.
-- This task is temporarily paused while focus shifts to PostgreSQL pipeline integration questions.
+- Specific risks in this hardening pass:
+  - existing-cluster safety depends on distinguishing exact-match managed state from drift
+  - default config rewrites or `rsync --delete` behavior against existing nodes would make install mode too destructive for product-style use
 
 ---
 
@@ -594,3 +920,15 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
 2026-05-20T04:00:00Z — Implemented `scripts/foxai_installer.sh` as the active single-file installer truth for Task 4. It preserves the source-script versions/defaults, runs the NameNode flow locally, then runs the DataNode flow remotely across all configured datanodes. Added `scripts/foxai_installer_premise_notes.md` to keep premise-specific assumptions explicit. Removed the old plan-only prototype file. Verification: `bash -n scripts/foxai_installer.sh` passed and the installer was marked executable.
 2026-05-20T04:10:00Z — Synced project memory to the new product direction. `markdown/project.md` now reflects packaging first, customer template/extension path second, licensing later, and Combined-Domain hardening on hold. Near-term work now points at validating and hardening `scripts/foxai_installer.sh`.
 2026-05-20T04:20:00Z — Packaging/protection work was put on hold temporarily after the unified shell installer draft. Leave `scripts/foxai_installer.sh` and `scripts/foxai_installer_premise_notes.md` as the resume point when returning to packaging. Current discussion focus shifted to PostgreSQL connection paths into the pipeline.
+2026-05-25T00:00:00Z — Resumed Task 4 from `markdown/progress.md` and continued installer hardening from current on-disk state. Added `scripts/gcloud_installer.go` as a separate Go entrypoint for GCloud-like environments where the NameNode cannot use `ssh-copy-id` to bootstrap DataNode trust. The new flow now prints the NameNode public key, instructs manual DataNode `authorized_keys` update plus `chmod 700 ~/.ssh` and `chmod 600 ~/.ssh/authorized_keys`, waits for user confirmation, then verifies passwordless SSH before continuing. Verification: `gofmt -w scripts/gcloud_installer.go` passed; `go build -o /tmp/gcloud_installer_test scripts/gcloud_installer.go` passed.
+2026-05-25T00:05:00Z — Simplified the installer family to Java 11 only. Removed Java 17 installation from `scripts/foxai_installer.go`, `scripts/gcloud_installer.go`, `scripts/foxai_installer.sh`, `scripts/setup_namenode_v5.sh`, and updated `scripts/foxai_installer_premise_notes.md` to match. Verification: `gofmt -w scripts/foxai_installer.go scripts/gcloud_installer.go` passed; `go build -o /tmp/foxai_installer_test scripts/foxai_installer.go` passed; `go build -o /tmp/gcloud_installer_test scripts/gcloud_installer.go` passed.
+2026-05-25T00:10:00Z — Corrected startup memory instructions so future sessions read `markdown/rule.md`, `markdown/project.md`, `markdown/logs.md`, and `markdown/progress.md`. Updated `agents/foxai.agent.md` and `markdown/rule.md` so the session-state file path is no longer incorrectly described as a root-level `progress.md`.
+2026-05-25T00:15:00Z — Relaxed the install-mode guard in `scripts/foxai_installer.go` and `scripts/gcloud_installer.go` so install mode no longer rejects runs that include existing DataNodes on the same NameNode. Mixed existing+new DataNode runs are now treated as cluster convergence, which is required for same-NameNode expansion workflows after the reused-DataNode lifecycle work. Next validation: rerun install on a cluster with the current NameNode, at least one existing DataNode, and at least one new DataNode, then verify sync/setup reaches the new node without guard failure.
+2026-05-25T00:20:00Z — Fixed a non-interactive SSH verification mismatch in `scripts/foxai_installer.go` and `scripts/gcloud_installer.go`. The installer was probing `user@IP` with `BatchMode=yes` but without `StrictHostKeyChecking=no`, so a node could be manually reachable while installer verification still failed on host-key/hostname-vs-IP friction. All non-interactive SSH verification/preflight checks in both installers now include `StrictHostKeyChecking=no` to match the intended cluster runtime behavior. Next validation: rerun the GCloud/manual-SSH path against a node that was previously accepted interactively by hostname and confirm the installer no longer blocks at passwordless SSH verification for the IP form.
+2026-05-25T00:25:00Z — Restored the runtime-shell verification fix in `scripts/foxai_installer.go` and `scripts/gcloud_installer.go`. Optional service-start and verification commands no longer depend on `source ~/.bashrc` in a non-interactive shell; both installers now export `JAVA_HOME`, `HADOOP_HOME`, `SPARK_HOME`, Hadoop/YARN config dirs, PATH, and `HADOOP_SSH_OPTS` explicitly before running `start-dfs.sh`, `start-yarn.sh`, `jps`, and `yarn node -list`. Next validation: rerun the optional post-install service-start prompt and confirm `start-dfs.sh` is found without manual shell setup.
+2026-05-25T00:30:00Z — Normalized later remote SSH execution in `scripts/foxai_installer.go` and `scripts/gcloud_installer.go` after a mixed old/new cluster run showed bootstrap SSH could pass while the reused-DataNode state probe still failed. The reused-state probe, remote base-package check, remote rsync bootstrap, Spark ownership normalization, remote DataNode setup entry, and reused-DataNode wipe path now use the same non-interactive SSH policy as the verified bootstrap path: `BatchMode=yes`, `StrictHostKeyChecking=no`, and `ConnectTimeout=5`. Interactive `ssh -tt` NOPASSWD setup also now disables strict host-key checking for consistency. Next validation: rerun a same-NameNode expansion with one reused old DataNode and confirm the reused-state check reaches the prompt/result stage instead of stopping on SSH.
+2026-05-25T00:35:00Z — Added an explicit post-write `source ~/.bashrc` step to both Go installers. On the NameNode, `ensureBashrc()` now sources `~/.bashrc` in a child shell immediately after writing the FoxAI managed env block. In the remote DataNode setup script, the shell now sources `$HOME/.bashrc` right after updating the managed env block before continuing. This improves same-run env availability, while the installer still cannot mutate the already-open parent shell that launched the binary. Next validation: rerun install and confirm no new error appears at the local/remote env-update step.
+2026-05-25T00:40:00Z — Fixed the `SYNC TO DATANODES` transport mismatch in both Go installers. The remote SSH checks and prep steps already used explicit `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5`, but the actual Hadoop/Spark sync still used plain `rsync` with its default SSH transport. Both `scripts/foxai_installer.go` and `scripts/gcloud_installer.go` now pass `-e "ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5"` to both rsync calls so the sync step uses the same verified SSH behavior as the rest of the installer. Next validation: rerun a mixed old/new cluster sync and confirm rsync no longer fails on a node that already passed installer SSH verification.
+2026-05-25T00:45:00Z — Added a new unified Go entrypoint at `scripts/installer.go` instead of replacing the two existing installers. This new file is based on the current `foxai_installer.go` flow but changes SSH bootstrap to: verify existing passwordless SSH first, try `ssh-copy-id` on missing nodes, then fall back to the manual public-key paste flow from `gcloud_installer.go` only for nodes that still fail. It also uses its own manifest directory `~/.foxai-unified-installer`. Verification: `gofmt -w scripts/installer.go` passed; `GOOS=linux GOARCH=amd64 go build -o scripts/installers/installer scripts/installer.go` passed; artifact `scripts/installers/installer` sha256 `90c511e89fd1ca51e9295bee6102cd0ce6ed730cadfe9f5d307a1df7d6bed5d7`. Next validation: run it against both a simple server path where `ssh-copy-id` should work and a cloud-style path where manual fallback is needed, and confirm one binary handles both bootstrap modes without user file switching.
+2026-05-25T00:50:00Z — Isolated `scripts/installer.go` from package-level duplicate declaration conflicts by changing its build tag from `linux` to `linux && unified_installer`. This keeps the unified source file in the repo without colliding with `scripts/foxai_installer.go` in editor/package analysis, while direct file builds for the dedicated binary remain valid. Next validation: confirm the red duplicate-declaration diagnostics disappear in the editor and that `GOOS=linux GOARCH=amd64 go build -o scripts/installers/installer scripts/installer.go` still produces the unified binary.
+2026-05-25T00:55:00Z — Replaced the placeholder `graphs/diagram.py` example with a real DTL v3 redraw script written in the normal `diagrams`/Graphviz style: direct node imports, `Diagram(...)`, `Cluster(...)`, and `>>` / `-` edges. The script now uses official `diagrams.onprem.*` nodes where available (`Kafka`, `PostgreSQL`, `Spark`, `Airflow`, `Superset`, `Grafana`, `Mlflow`, `Qdrant`) and `diagrams.generic.storage.Storage` for MinIO/Iceberg-style storage blocks. Verification: `python3 graphs/diagram.py` passed and generated `graphs/dtlver3_redraw.png`. The original sample output `graphs/web_service.png` remains present as the library example artifact.

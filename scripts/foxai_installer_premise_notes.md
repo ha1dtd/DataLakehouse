@@ -15,7 +15,6 @@ These are intentionally fixed to the same versions used in the current tested sc
 - Hadoop: `3.3.6`
 - Spark: `3.5.8` via `spark-3.5.8-bin-hadoop3`
 - Java 11 package: `temurin-11-jdk`
-- Java 17 package: `temurin-17-jdk`
 
 Do not loosen these versions in the installer unless the source scripts are intentionally upgraded and revalidated.
 
@@ -34,7 +33,6 @@ The current scripts include infrastructure choices that may be valid for the cur
   - Hadoop: `/home/<user>/hadoop`
   - Spark: `/opt/spark`
   - Java 11 home: `/usr/lib/jvm/temurin-11-jdk-amd64`
-  - Java 17 home: `/usr/lib/jvm/temurin-17-jdk-amd64`
 - Fixed hostname pattern:
   - `namenode`
   - `datanode1`, `datanode2`, ...

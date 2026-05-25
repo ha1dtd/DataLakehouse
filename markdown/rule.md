@@ -3,22 +3,22 @@
 ## Startup Read Order
 
 - Before any fresh workday/session start, read files in this exact order:
-  1. `rule.md`
-  2. `project.md`
-  3. `logs.md`
+  1. `markdown/rule.md`
+  2. `markdown/project.md`
+  3. `markdown/logs.md`
 - If resuming an in-progress task or any task that may have been compacted, read files in this exact order:
-  1. `rule.md`
-  2. `project.md`
-  3. `logs.md`
-  4. `progress.md`
-- If user only says "read rule.md" outside of session start, read only this file — skip the other three.
+  1. `markdown/rule.md`
+  2. `markdown/project.md`
+  3. `markdown/logs.md`
+  4. `markdown/progress.md`
+- If user only says "read rule.md" outside of session start, read only `markdown/rule.md` — skip the other three.
 - Remove/ignore any older startup instruction that conflicts with this order.
 
 ---
 
 ## progress Filename Rule
 
-- The session state file name is exactly `progress.md` at workspace root.
+- The session state file is exactly `markdown/progress.md`.
 - Do not infer filename variants such as `.MD` or other casing.
 - If the file is missing, say so explicitly instead of silently substituting another file.
 
@@ -289,7 +289,7 @@ For any task touching more than 1 file or more than 1 logical step:
 
 ### Before first edit
 
-- Create or update `progress.md` with:
+- Create or update `markdown/progress.md` with:
   - Task goal
   - Files in scope
   - Current on-disk status of each file
@@ -298,7 +298,7 @@ For any task touching more than 1 file or more than 1 logical step:
 
 ### After every file edit
 
-- Immediately update `progress.md` with:
+- Immediately update `markdown/progress.md` with:
   - File changed
   - Exact change made
   - Verification status
@@ -307,22 +307,22 @@ For any task touching more than 1 file or more than 1 logical step:
 ### If session is getting long or compact may be near
 
 - Stop editing
-- Update `progress.md`
+- Update `markdown/progress.md`
 - Update `logs.md` if progress is meaningful
 - Only then continue
 
 ### On resume or after any compaction
 
-- Read `rule.md` → `project.md` → `logs.md` → `progress.md`
+- Read `markdown/rule.md` → `markdown/project.md` → `markdown/logs.md` → `markdown/progress.md`
 - Re-read exact active files on disk
 - Do not rely on prior chat memory
 - Never start a new edit until on-disk file state is confirmed
 - Source of truth priority:
   1. On-disk file contents
-  2. `progress.md`
+  2. `markdown/progress.md`
   3. repo memory
   4. chat history last
-- If `progress.md` conflicts with chat memory, trust `progress.md` until on-disk files are re-read.
+- If `markdown/progress.md` conflicts with chat memory, trust `markdown/progress.md` until on-disk files are re-read.
 
 ### Phase structure for large refactors (3+ files)
 
