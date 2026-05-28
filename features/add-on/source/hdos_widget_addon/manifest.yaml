@@ -1,0 +1,78 @@
+id: hdos-widget-addon
+name: HDOS Widget Add-on
+version: 0.1.0
+type: pipeline-addon
+owner: customer
+min_platform_version: 1.0.0
+
+domains:
+  - name: dashboard_widgets
+    dags_path: domains/dashboard_widgets/dags
+    jobs_path: domains/dashboard_widgets/jobs
+    config_path: domains/dashboard_widgets/config
+    sql_path: domains/dashboard_widgets/sql
+    services_path: domains/dashboard_widgets/services
+
+entry_dags:
+  - hdos_widget_dashboard
+
+jobs_path:
+  - domains/dashboard_widgets/jobs
+
+config_files:
+  - domains/dashboard_widgets/config/defaults.yaml
+  - domains/dashboard_widgets/config/sources.yaml
+  - domains/dashboard_widgets/config/widgets.yaml
+
+required_env:
+  - JAVA_HOME
+  - HADOOP_HOME
+  - SPARK_HOME
+
+required_connections:
+  - hdos_postgres
+  - lakehouse_minio
+
+required_packages:
+  python:
+    - pyspark
+    - pyyaml
+  os: []
+
+target_namespaces:
+  iceberg:
+    - raw_catalog.hdos_widget
+    - bronze_catalog.hdos_widget
+    - silver_catalog.hdos_widget
+    - gold_catalog.hdos_widget
+  minio:
+    - s3a://gold/lakehouse/
+
+output_locations:
+  - type: iceberg
+    target: raw_catalog.hdos_widget
+  - type: iceberg
+    target: bronze_catalog.hdos_widget
+  - type: iceberg
+    target: silver_catalog.hdos_widget
+  - type: iceberg
+    target: gold_catalog.hdos_widget.dashboard_daily_encounter_activity
+  - type: iceberg
+    target: gold_catalog.hdos_widget.dashboard_daily_finance_classification
+  - type: iceberg
+    target: gold_catalog.hdos_widget.dashboard_daily_inpatient_summary
+  - type: iceberg
+    target: gold_catalog.hdos_widget.dashboard_department_bed_occupancy
+  - type: iceberg
+    target: gold_catalog.hdos_widget.dashboard_clinical_pathway_summary
+  - type: minio
+    target: s3a://gold/lakehouse/
+
+shared_output_policy:
+  allow: false
+  operator_confirmation_required: true
+
+license_hooks:
+  install: reserved
+  enable: reserved
+  runtime: reserved

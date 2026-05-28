@@ -1,0 +1,28 @@
+widgets:
+  - topic: encounter_activity
+    task_id: gold_encounter_activity
+    target: gold_catalog.hdos_widget.dashboard_daily_encounter_activity
+    source_tables:
+      - tb_patientrecord
+  - topic: finance_classification
+    task_id: gold_finance_classification
+    target: gold_catalog.hdos_widget.dashboard_daily_finance_classification
+    source_tables:
+      - tb_invoice
+  - topic: inpatient_summary
+    task_id: gold_inpatient_summary
+    target: gold_catalog.hdos_widget.dashboard_daily_inpatient_summary
+    source_tables:
+      - tb_patientrecord
+  - topic: bed_occupancy
+    task_id: gold_bed_occupancy
+    target: gold_catalog.hdos_widget.dashboard_department_bed_occupancy
+    source_tables:
+      - tb_bed
+      - tb_department
+  - topic: clinical_pathway
+    task_id: gold_clinical_pathway
+    target: gold_catalog.hdos_widget.dashboard_clinical_pathway_summary
+    source_tables:
+      - tb_phacdodieutri
+      - tb_phacdodieutri_phieudieutri

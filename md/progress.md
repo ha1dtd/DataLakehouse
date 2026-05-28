@@ -56,7 +56,7 @@ None while on hold. If resumed later, continue with Fix 4 (explicit failure-cont
 
 **Mode:** Refactor
 
-**Current Phase:** Live Linux validation passed on 2026-05-26 for the main installer hardening scope. The contract-driven feature set is working in the tested scenarios:
+**Current Phase:** On hold by user as of 2026-05-28 after the current `x86_64 Linux` baseline was accepted as working for the present customer scope. Live Linux validation passed on 2026-05-26 for the main installer hardening scope. The contract-driven feature set is working in the tested scenarios:
 - fresh cluster install: passed end to end
 - fresh NameNode + fresh DataNode2 + old DataNode1 from a previous cluster: passed after the conflicting-node reinitialize fix
 - same-cluster rerun behavior: validated as good after the rerun no-op hardening and `.bashrc` compare hotfix
@@ -79,7 +79,7 @@ Repo/layout checkpoint on 2026-05-28:
 - active installer source now lives at `features/installers/source/`
 - legacy installer/bootstrap references now live at `features/installers/script/`
 - current built Linux installer artifact is `builds/foxai-installer-linux-amd64`
-- `features/addon/` and `features/licensing/` now exist as the dedicated product buckets for the remaining two feature tracks
+- `features/add-on/` and `features/licensing/` now exist as the dedicated product buckets for the remaining two feature tracks
 
 Contract/planning update on 2026-05-26:
 - updated `features/installers/source/md/installer_contract.md`
@@ -107,24 +107,13 @@ Known environment note from live testing:
   - after the operator pastes the key, the run continues normally
 - treat this as a GCloud / OS Login / guest-agent timing issue unless later evidence shows otherwise
 
-**Next Exact Step:** For the current installer pass, only one meaningful runtime scenario remains unvalidated:
+**Next Exact Step:** None while on hold. If packaging is reopened later:
 1. test skipping some nodes mid-run in the reused-node decision flow
    - confirm skipped nodes are removed from the final active cluster shape for that run
    - confirm local hosts/workers/config rewrites match the kept nodes only
    - confirm kept nodes still complete normally
-2. if that scenario passes, this installer hardening pass can be treated as complete for the current packaging scope
-3. after that, before starting broader compatibility work, collect user confirmations for the 2026-05-26 expansion contract:
-   - keep official baseline as `Ubuntu/Debian x86_64 online` or change it
-   - whether RHEL-family support is needed now or later
-   - whether ARM support is needed now or later
-   - which install paths must become configurable in the next pass
-   - whether artifact-source support means:
-     - internal URLs / mirrors only
-     - or also pre-staged local artifacts
-   - whether full offline / air-gapped support is in scope now or deferred
-4. only after those confirmations:
-   - start the next compatibility pass
-   - or move to customer extension handoff if expansion is deferred
+2. if that scenario passes, treat the current installer hardening pass as complete for the present packaging scope
+3. then collect user confirmations for broader compatibility work from the 2026-05-26 expansion contract
 
 **Files In Scope**
 
@@ -588,7 +577,7 @@ Known environment note from live testing:
 - The repo contains active Lakehouse DAG/job code under `dags/`, including:
   - `dags/combined_domains/`
   - `dags/realtime_rabbitmq/`
-- No actual customer add-on/plugin implementation layer is present on disk yet; current plugin/licensing references are still planning/documentation text rather than runnable repo modules.
+- A first add-on contract and scaffold now exist on disk under `features/add-on/`, but no add-on runtime implementation exists yet for validate/install/enable/disable/rollback behavior.
 - No real licensing implementation is present on disk yet; current licensing references are still documentation-level only.
 - Priority order now is:
   - first: package the platform bootstrap only
@@ -810,6 +799,126 @@ Known environment note from live testing:
 - Specific risks in this hardening pass:
   - existing-cluster safety depends on distinguishing exact-match managed state from drift
   - default config rewrites or `rsync --delete` behavior against existing nodes would make install mode too destructive for product-style use
+
+---
+
+### Task 5 — Add-on Runtime Contract + Package Model
+
+**Goal:** Define and productize the Lakehouse add-on runtime as a real customer-facing extension package system, including the package contract, runtime ownership boundary, deployment model, and the first widget-oriented example package.
+
+**Mode:** Refactor
+
+**Current Phase:** Active as of 2026-05-28. The add-on feature moved from loose planning into an approved product-grade contract plus on-disk scaffold work:
+- packaging is now treated as on hold for the current `x86_64 Linux` baseline
+- add-on direction is approved as a real customer product feature, not a lab/plugin experiment
+- the contract now treats add-ons as prepared versioned packages, not interactive script-entry flows
+- current contract source of truth:
+  - `features/add-on/md/contract.md`
+- current first example package scaffold:
+  - `features/add-on/source/hdos_widget_addon/`
+- the scaffold is intentionally package-shaped only:
+  - manifest
+  - README
+  - one `dashboard_widgets` domain
+  - DAG/job placeholders
+  - widget-oriented source table config
+  - widget-oriented Gold topic config
+- current scaffold reflects the actual `hdos_widget` business shape rather than the older generic `hdos_sample` placeholder:
+  - source tables:
+    - `tb_patientrecord`
+    - `tb_invoice`
+    - `tb_treatment`
+    - `tb_bed`
+    - `tb_department`
+    - `tb_phacdodieutri`
+    - `tb_phacdodieutri_phieudieutri`
+  - widget Gold topics:
+    - `encounter_activity`
+    - `finance_classification`
+    - `inpatient_summary`
+    - `bed_occupancy`
+    - `clinical_pathway`
+
+**Next Exact Step:**
+1. define the runtime-side add-on structure under `features/add-on/source/` beyond the package example:
+   - manifest/schema area
+   - registry model
+   - install/enable/disable/status/remove/rollback behavior
+2. define the exact runtime-owned server paths and ownership rules that match the approved contract:
+   - `/opt/lakehouse/addons/...`
+   - `/etc/lakehouse/addons/...`
+   - `/home/ubuntu/airflow/dags/addons/...`
+3. decide and document the first Airflow exposure mechanism for enabled add-ons:
+   - preferred current direction: symlink enabled DAGs into the managed Airflow add-on DAG path
+4. identify the exact installer delta required so the installer prepares the add-on runtime directories and permissions without yet deploying customer packages
+5. only after the runtime contract is written clearly:
+   - begin turning `hdos_widget_addon` from scaffold into a real runnable add-on package
+
+**Files In Scope**
+
+- `features/add-on/md/contract.md`
+  - status: updated | verified: local
+  - current product-grade contract for the add-on feature
+  - now fixes the production boundary, required paths, manifest requirement, isolation rules, dependency policy, and licensing insertion points
+
+- `features/add-on/source/hdos_widget_addon/manifest.yaml`
+  - status: updated | verified: local
+  - first widget-oriented example add-on manifest
+  - currently declares package identity, domain paths, namespaces, outputs, and shared-output policy
+
+- `features/add-on/source/hdos_widget_addon/README.md`
+  - status: updated | verified: local
+  - explains that the package is a scaffold aligned to the contract, not a direct copy of current runtime DAG folders
+
+- `features/add-on/source/hdos_widget_addon/domains/dashboard_widgets/`
+  - status: updated | verified: local
+  - current example add-on domain package
+  - includes:
+    - `dags/hdos_widget_dashboard.py`
+    - `jobs/postgres_to_raw.py`
+    - `jobs/raw_to_bronze.py`
+    - `jobs/bronze_to_silver.py`
+    - `jobs/silver_to_gold.py`
+    - `config/defaults.yaml`
+    - `config/sources.yaml`
+    - `config/widgets.yaml`
+    - `sql/README.md`
+    - `services/README.md`
+
+**Current On-Disk Truth**
+
+- `features/add-on/` now exists and is the active product area for this feature.
+- The contract is no longer a question list; it is now an approved product-grade contract for:
+  - package-based deployment
+  - mandatory manifest
+  - controlled runtime paths
+  - externalized overrides/secrets
+  - strict default isolation
+  - controlled dependency policy
+  - later global licensing insertion
+- `features/add-on/source/hdos_widget_addon/` is the first example package scaffold.
+- The scaffold is intentionally not runnable yet:
+  - DAG and job files are placeholders
+  - no add-on runtime commands exist yet
+  - no schema validator exists yet
+  - no install/enable/disable/rollback implementation exists yet
+- No installer preparation step exists yet for:
+  - `/opt/lakehouse/addons/`
+  - `/etc/lakehouse/addons/installed/`
+  - `/etc/lakehouse/addons/enabled/`
+  - `/etc/lakehouse/addons/config/`
+  - `/home/ubuntu/airflow/dags/addons/`
+- No Airflow exposure mechanism exists yet for enabled add-ons.
+
+**Risks**
+
+- The contract is now strict enough for product planning, but the runtime behavior is still unimplemented.
+- It is still easy to accidentally drift back into a lab-style design if we let add-ons directly mutate platform-owned files or install arbitrary system dependencies.
+- The first major architectural risk is exposing add-on DAGs into Airflow safely without creating duplicated state or rollback ambiguity.
+- The second major risk is config/secrets handling:
+  - the package shape is clear
+  - the runtime override path and injection behavior are not implemented yet
+- The current example package is only a scaffold and must not be presented as a deployable customer add-on yet.
 
 ---
 
@@ -1263,4 +1372,5 @@ Known environment note from live testing:
 2026-05-25T00:45:00Z — Added a new unified Go entrypoint at `scripts/installer.go` instead of replacing the two existing installers. This new file is based on the current `foxai_installer.go` flow but changes SSH bootstrap to: verify existing passwordless SSH first, try `ssh-copy-id` on missing nodes, then fall back to the manual public-key paste flow from `gcloud_installer.go` only for nodes that still fail. It also uses its own manifest directory `~/.foxai-unified-installer`. Verification: `gofmt -w scripts/installer.go` passed; `GOOS=linux GOARCH=amd64 go build -o builds/foxai-installer-linux-amd64 scripts/installer.go` passed; artifact `builds/foxai-installer-linux-amd64` sha256 `90c511e89fd1ca51e9295bee6102cd0ce6ed730cadfe9f5d307a1df7d6bed5d7`. Next validation: run it against both a simple server path where `ssh-copy-id` should work and a cloud-style path where manual fallback is needed, and confirm one binary handles both bootstrap modes without user file switching.
 2026-05-25T00:50:00Z — Isolated `scripts/installer.go` from package-level duplicate declaration conflicts by changing its build tag from `linux` to `linux && unified_installer`. This keeps the unified source file in the repo without colliding with `features/installers/script/foxai_installer.go` in editor/package analysis, while direct file builds for the dedicated binary remain valid. Next validation: confirm the red duplicate-declaration diagnostics disappear in the editor and that `GOOS=linux GOARCH=amd64 go build -o builds/foxai-installer-linux-amd64 scripts/installer.go` still produces the unified binary.
 2026-05-25T00:55:00Z — Replaced the placeholder `graphs/diagram.py` example with a real DTL v3 redraw script written in the normal `diagrams`/Graphviz style: direct node imports, `Diagram(...)`, `Cluster(...)`, and `>>` / `-` edges. The script now uses official `diagrams.onprem.*` nodes where available (`Kafka`, `PostgreSQL`, `Spark`, `Airflow`, `Superset`, `Grafana`, `Mlflow`, `Qdrant`) and `diagrams.generic.storage.Storage` for MinIO/Iceberg-style storage blocks. Verification: `python3 graphs/diagram.py` passed and generated `graphs/output/dtlver3_redraw.png`. The original sample output `graphs/web_service.png` remains present as the library example artifact.
-2026-05-28T03:00:00Z — Synced repo memory after the Lakehouse rename and layout overhaul. Updated `md/project.md`, `md/logs.md`, `md/progress.md`, `md/rule.md`, both agent files, and the active installer docs under `features/installers/source/md/` so the repo now points to `md/`, `features/installers/source/`, `features/installers/script/`, `builds/foxai-installer-linux-amd64`, `features/addon/`, and `features/licensing/` as the current structure.
+2026-05-28T03:00:00Z — Synced repo memory after the Lakehouse rename and layout overhaul. Updated `md/project.md`, `md/logs.md`, `md/progress.md`, `md/rule.md`, both agent files, and the active installer docs under `features/installers/source/md/` so the repo now points to `md/`, `features/installers/source/`, `features/installers/script/`, `builds/foxai-installer-linux-amd64`, `features/add-on/`, and `features/licensing/` as the current structure.
+2026-05-28T04:57:55Z — Re-read `md/rule.md` and updated task memory for the approved feature shift. Packaging (Task 4) is now explicitly on hold after the accepted `x86_64 Linux` baseline, and a new active Task 5 now tracks the add-on runtime contract and package model. Recorded the approved product-grade contract at `features/add-on/md/contract.md` and the current first widget-oriented example scaffold at `features/add-on/source/hdos_widget_addon/`.

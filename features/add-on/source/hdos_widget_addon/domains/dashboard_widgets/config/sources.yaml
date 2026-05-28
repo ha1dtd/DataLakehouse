@@ -1,0 +1,36 @@
+sources:
+  - name: tb_patientrecord
+    primary_key: patientrecordid
+    target_raw: raw_catalog.hdos_widget.tb_patientrecord_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_patientrecord_bronze
+    target_silver: silver_catalog.hdos_widget.tb_patientrecord_silver
+  - name: tb_invoice
+    primary_key: invoiceid
+    target_raw: raw_catalog.hdos_widget.tb_invoice_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_invoice_bronze
+    target_silver: silver_catalog.hdos_widget.tb_invoice_silver
+  - name: tb_treatment
+    primary_key: treatmentid
+    target_raw: raw_catalog.hdos_widget.tb_treatment_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_treatment_bronze
+    target_silver: silver_catalog.hdos_widget.tb_treatment_silver
+  - name: tb_bed
+    primary_key: bedid
+    target_raw: raw_catalog.hdos_widget.tb_bed_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_bed_bronze
+    target_silver: silver_catalog.hdos_widget.tb_bed_silver
+  - name: tb_department
+    primary_key: departmentid
+    target_raw: raw_catalog.hdos_widget.tb_department_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_department_bronze
+    target_silver: silver_catalog.hdos_widget.tb_department_silver
+  - name: tb_phacdodieutri
+    primary_key: phacdodieutriid
+    target_raw: raw_catalog.hdos_widget.tb_phacdodieutri_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_phacdodieutri_bronze
+    target_silver: silver_catalog.hdos_widget.tb_phacdodieutri_silver
+  - name: tb_phacdodieutri_phieudieutri
+    primary_key: phacdodieutri_phieudieutriid
+    target_raw: raw_catalog.hdos_widget.tb_phacdodieutri_phieudieutri_raw
+    target_bronze: bronze_catalog.hdos_widget.tb_phacdodieutri_phieudieutri_bronze
+    target_silver: silver_catalog.hdos_widget.tb_phacdodieutri_phieudieutri_silver

@@ -1,0 +1,19 @@
+addon:
+  id: hdos-widget-addon
+  domain: dashboard_widgets
+
+runtime:
+  schedule: null
+  spark_profile: standard
+
+source:
+  connection_ref: hdos_postgres
+  database: test05052026
+  schema: public
+
+outputs:
+  raw_namespace: raw_catalog.hdos_widget
+  bronze_namespace: bronze_catalog.hdos_widget
+  silver_namespace: silver_catalog.hdos_widget
+  gold_namespace: gold_catalog.hdos_widget
+  minio_prefix: s3a://gold/lakehouse/
