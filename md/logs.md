@@ -1,0 +1,178 @@
+# Archived Project Logs
+
+These are older project/session log entries kept for reference.
+
+- **2026-05-28:** Repo/layout overhaul checkpoint:
+  - repo root renamed from `FoxAI` to `Lakehouse`
+  - project memory files moved from `markdown/` to `md/`
+  - active installer source moved under `features/installers/source/`
+  - legacy installer/bootstrap references moved under `features/installers/script/`
+  - current built Linux installer artifact is `builds/foxai-installer-linux-amd64`
+  - dedicated feature buckets now exist at:
+    - `features/addon/`
+    - `features/licensing/`
+
+- **2026-05-25:** Closed a major installer-hardening pass for Task 4:
+  - hardened `features/installers/script/foxai_installer.go` and `features/installers/script/gcloud_installer.go` against fresh-cluster and mixed old/new-DataNode failures found during live GCloud validation
+  - normalized non-interactive SSH behavior across verification, reused-DataNode probing, remote prep, rsync transport, and remote setup paths
+  - restored explicit runtime env export for optional Hadoop/YARN verification commands and added post-write `source ~/.bashrc` steps for same-run env availability
+  - added `scripts/installer.go` as a new unified Go installer that tries `ssh-copy-id` first, then falls back to the manual public-key bootstrap flow when automatic SSH setup is not possible
+  - current repo artifact after the later layout overhaul is `builds/foxai-installer-linux-amd64`
+  - replaced the placeholder `graphs/diagram.py` example with a real `diagrams`/Graphviz redraw of the `media/dtlver3.jpg` architecture and verified output generation at `graphs/output/dtlver3_redraw.png`
+
+- **2026-05-20:** HDOS PostgreSQL sample DAG was built, deployed, and validated end to end:
+  - verified PostgreSQL reachability from namenode to `192.168.100.78:5630`
+  - source database in use: `test05052026`
+  - initial working sample table chosen: `public.tb_nhanvienlog`
+  - created local DAG path under `dags/hdos_sample/` with:
+    - `foxai_config.json`
+    - `foxai_config.py`
+    - `postgres_to_raw.py`
+    - `raw_to_bronze.py`
+    - `bronze_to_silver.py`
+    - `silver_to_gold.py`
+    - `hdos_sample.py`
+  - deployed runtime scripts/config to `/home/ubuntu/daihai_script/hdos_sample/`
+  - deployed Airflow DAG to `/home/ubuntu/airflow/dags/hdos_sample.py`
+  - Airflow confirmed DAG registration and task graph for `hdos_sample`
+  - Spark JDBC package resolution for PostgreSQL was verified at runtime (`org.postgresql:postgresql:42.7.3`)
+  - first runtime failure root cause:
+    - PostgreSQL `pg_hba.conf` allowed namenode only, but Spark executors also connected from datanodes
+  - runtime fix applied on the Windows PostgreSQL host:
+    - widened `pg_hba.conf` access to cluster subnet `192.168.100.0/24`
+  - after that fix, `postgres_to_raw` and the DAG flow succeeded
+  - user confirmed Superset could query the Gold table and draw charts successfully
+  - current Gold output is a technical login-activity sample:
+    - `gold_catalog.hdos_sample.tb_nhanvienlog_daily_domain_summary`
+  - confirmed next-step hospital-grade source tables for a richer business sample:
+    - `tb_patientrecord`
+    - `tb_servicedata`
+    - `tb_invoice`
+    - `tb_treatment`
+    - `tb_nhanvien`
+    - `tb_bed`
+  - persistent findings note created at:
+    - `dags/hdos_sample/HDOS_SOURCE_FINDINGS.md`
+
+- **2026-05-20:** `realtime_rabbitmq` 5-day validation path worked on namenode after the May 19 refactor/follow-up fixes:
+  - user confirmed the deployed DAG worked
+  - runtime path in use is `realtime_rabbitmq`, not `realtime_validate`
+  - row-day inbox files were updated to use row-specific `event_id` values (`fare-demo-5day-row-0001` ... `0005`) so row mode is not deduped against the file-mode batch
+  - file mode and row mode state were split under `demo/realtime_rabbitmq_fare_amount/state/file/...` and `.../state/row/...` so row charts do not append on top of file-mode state
+  - deployed runtime files on namenode remain:
+    - DAG: `/home/ubuntu/airflow/dags/realtime_rabbitmq.py`
+    - scripts: `/home/ubuntu/daihai_script/realtime_rabbitmq/`
+  - current known remaining gap in the chat record:
+    - the user confirmed the DAG worked, but the chat does not explicitly record whether `demo/row_day5/fare_amount/...` was compared against `demo/file/fare_amount/...`
+    - future sessions should inspect existing MinIO artifacts first before rerunning anything
+
+- **2026-05-18:** `realtime_validate` file-mode path was redesigned, deployed, and checkpointed before row-mode refactor:
+  - re-read `rule.md`, `project.md`, and `logs.md` before continuing work
+  - split `realtime_validate` into separate file-vs-row state/output paths while keeping shallow demo output for the existing HTML viewer
+  - file mode ingest now stores only MinIO/S3 pointer metadata; no more parquet explode in ingest
+  - file calculation now runs through Spark via `spark-submit` instead of plain `python3`
+  - added `comparison.json` artifact under `demo/<snapshot>_<mode>/fare_amount/` for validation comparisons
+  - duplicate reruns now continue when downstream artifacts are missing instead of skipping too early
+  - reduced calculation/chart task logs to compact one-line summaries
+  - fixed chart-task hang caused by raw-max histogram scaling producing ~431k bin edges and x-axis ticks
+  - aligned `fare_amount` histogram bounds more closely with the sample histogram job by switching to a two-stage IQR style upper bound
+  - pushed and hash-verified updated DAG/scripts on the namenode; Airflow lists `realtime_validate` correctly
+  - local HTML monitor work remained local-only as required: task-mutation helper-server requirement was reconfirmed and live refresh was fixed to keep polling the latest run
+  - current remaining issue is row-file mode inefficiency:
+    - transmitter still explodes parquet into per-row messages in pandas/Python
+    - receiver/runtime path still implies high per-row orchestration/state overhead
+    - next approved direction is Approach A: chunked/batched row-file replay that preserves row-level semantics while avoiding one message/state rewrite per row
+
+- **2026-05-18:** Fixed Airflow monitor task-action REST routes using actual Airflow docs:
+  - `html/airflow_monitor.html` task mutations must not use `/api/v1/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}` with an `action` body.
+  - Correct routes recorded for future HTML work:
+    - `POST /api/v1/dags/{dag_id}/clearTaskInstances`
+    - `POST /api/v1/dags/{dag_id}/updateTaskInstancesState`
+
+- **2026-05-18:** Defined the next RabbitMQ validation task more concretely:
+  - Re-read `rule.md` before planning.
+  - Agreed the next task is a systemic validation, not a code change yet.
+  - Validation target: one fixed 1-week taxi dataset used both as offline batch truth and as incremental RabbitMQ replay input.
+  - Batch side must produce exact final metrics for comparison: row count, distinct row-key count, and histogram bins/counts.
+  - Realtime side must replay the same data through `realtime_rabbitmq`, then compare final state against batch truth for drift, duplicates, missing rows, and extra rows.
+  - Planned scenario matrix includes: clean replay, duplicate file resend, duplicate row resend, overlapping files, same business rows with new event ids, and receiver restart during unacked-message conditions.
+  - Key current risk called out explicitly: dedupe is by file hash and `event_id`, so business-row duplication may still slip through when identical rows arrive under new IDs.
+
+- **2026-05-15:** RabbitMQ realtime demo deployed and validated on namenode:
+  - Created isolated RabbitMQ demo path under `realtime_rabbitmq/` while leaving the Kafka realtime demo intact.
+  - Pushed scripts to `/home/ubuntu/daihai_script/realtime_rabbitmq/` and copied the old realtime inbox there.
+  - Pushed DAG flat to `/home/ubuntu/airflow/dags/realtime_fare_amount_rabbitmq_pipeline.py`.
+  - Current RabbitMQ queue name is `daihai_local_test_1`.
+  - Receiver behavior now represents the intended long-term trigger model: long-lived process outside Airflow consumes RabbitMQ, writes raw event JSON to MinIO, then auto-triggers DAG `realtime_fare_amount_rabbitmq_pipeline`.
+  - Message types currently supported: `file` and `row`; manual free-text test payloads are ignored by the DAG path.
+  - Confirmed expected RabbitMQ retry semantics: if DAG trigger fails before ack, restarting receiver causes the same unacked message to be redelivered and auto-trigger attempted again.
+  - Trigger auth issue was resolved by hardcoding temporary Airflow API settings in receiver:
+    - API base: `http://192.168.100.66:8081/api/v1`
+    - user/pass: `admin/admin`
+  - Current operating note: Hoang is absent, so upstream transmitter behavior is temporarily simulated manually from our side using `rabbitmq_live_transmitter.py`.
+  - Next validation target clarified with supervisor intent: build a 1-week synthetic taxi dataset, compute batch truth separately, replay same data incrementally through RabbitMQ realtime path, then compare final aggregates/charts for drift, duplicates, or missing rows.
+
+- **2026-05-14:** Combined-domain safe-fix pass completed and deployed:
+  - Re-read and followed current `rule.md` workflow while applying the agreed safe fix sequence.
+  - **Fix 1 complete:** centralized combined-domain runtime config into shared files:
+    - `dag_combined_domains/foxai_config.py`
+    - `dag_combined_domains/foxai_config.json`
+  - Updated combined-domain code to consume shared config instead of scattered inline values:
+    - `dag_combined_domains/dag_combined_domains.py`
+    - `dag_combined_domains/silver_from_bronze_domains.py`
+    - `dag_combined_domains/gold_from_silver_domains.py`
+    - `dag_combined_domains/bronze_from_raw_domains.py`
+    - `dag_combined_domains/kafka_consume_to_raw_domains.py`
+    - `dag_combined_domains/kafka_enqueue_ingest_domains.py`
+  - **Fix 2 complete:** replaced remaining `print()` usage in combined-domain Python files with structured `logging`.
+  - **Fix 3 complete:** finished remaining config cleanup in `dag_combined_domains/dag_combined_domains.py`:
+    - imported shared `INGEST_SOURCES_FILE`
+    - introduced named script path constants from `SCRIPT_BASE`
+    - reduced remaining magic S3A config literals into named constants in the DAG file
+  - Small correctness fix included during fix 2: added missing `os` import in `dag_combined_domains/bronze_from_raw_domains.py`.
+  - Validation done locally:
+    - no editor errors in edited combined-domain files
+    - no remaining `print()` found in `dag_combined_domains/*.py`
+  - Deployment done to namenode with remote hash verification:
+    - DAG pushed to `/home/ubuntu/airflow/dags/dag_combined_domains.py`
+    - scripts/config pushed to `/home/ubuntu/daihai_script/dag_combined_domains/`
+    - local and remote `sha256` matched for all pushed files
+  - RabbitMQ experimentation was separated from combined-domain work by moving local RabbitMQ test files into `hdos_merge/`; no RabbitMQ DAG deployment was done.
+  - Remaining agreed safe fixes:
+    - Fix 4: explicit failure-context logging before re-raise
+    - Fix 5: small observability logs for phase start/end, write targets, cheap counts
+
+- **2026-05-13:** Realtime histogram demo context stabilized:
+  - Confirmed active Kafka-first demo path: inbox files → Kafka topic `realtime_fare_amount_demo` → DAG `realtime_fare_amount_pipeline` → MinIO state → Spark histogram snapshot → HTML viewer.
+  - Prepared/verified May 13 demo inputs for replay and UI validation:
+    - seed batch `realtime_histogram_demo/inbox/batch/fare_amount_seed_batch.json` with 5 rows at `2026-05-13T10:00:00Z` → `2026-05-13T10:00:04Z`
+    - single-row event `realtime_histogram_demo/inbox/rows/fare_amount_row_20260513T120500Z.json` at `2026-05-13T12:05:00Z`
+  - Runtime identifiers locked for continuity: broker `192.168.100.66:9092`, consumer group `realtime-fare-amount-demo-airflow`, persistent state prefix `demo/realtime_fare_amount/state/`.
+- **2026-05-12:** Added AI working rules to avoid broad file overwrites and keep edits targeted. Confirmed active Airflow webserver port is `8081`.
+- **2026-05-11:** Debugged `combined_domain_medallion_pipeline` failure:
+  - Root cause: `bronze_from_raw_domains.py` read `raw_catalog.control.raw_registry`, but `kafka_consume_to_raw_domains.py` writes `raw_catalog.registry.raw_registry`.
+  - Fixed local script and rsynced to `/home/ubuntu/daihai_script/dag_combined_domains/bronze_from_raw_domains.py`.
+  - Triggered run `manual_fix_20260511_152251`; `enqueue_ingest_requests` and `kafka_consume_to_raw` succeeded, `bronze_from_raw` was still running when monitoring stopped.
+- **2026-05-11:** Updated project documentation to reflect current state:
+  - Resolved file organization issues (`silver_histograms_sample.py`)
+  - Completed histogram feature expansion with web viewer
+  - Updated task statuses in Next Actions
+  - Added architectural decision for histogram visualization
+- **2026-05-04 → 2026-05-09:** Built histogram web viewer from scratch:
+  - Created `html_histograms/` with HTML/CSS/JS viewer for Spark-generated chart PNGs stored in MinIO
+  - Airflow API integration for monitoring DAG runs
+  - Auto-refresh histogram viewer (polls MinIO for new charts, renders in browser)
+  - Dark mode UI with bright-mode color preservation for progress/status elements
+  - Integer bin & tick fixes applied to `silver_sample_histograms_job.py` and deployed to namenode
+- **2026-04-01 → 2026-04-15:** Infrastructure and stack direction stabilized on on-prem Spark + YARN + MinIO + Airflow + Iceberg (HadoopCatalog). Hive Metastore approach was dropped.
+- **2026-04-17 → 2026-04-21:** Core taxi pipeline fixes and tuning were applied (schema reconciliation, DAG/Spark settings, script rename to `silver.py`/`gold.py`). Main performance finding: workload is largely I/O/network bound, so config-only tuning gives limited wall-clock improvement.
+- **2026-04-22:** Target architecture aligned to `dtlver3` direction: keep old taxi path stable, build/validate hardening through new combined pipeline (Kafka + registry + error handling).
+- **2026-04-23:** DAG folder organization mostly completed; one known cleanup remained (`silver_histograms_sample.py` still at root).
+- **2026-04-28:** Combined domain pipeline rerun hardening completed.
+- **2026-04-24:** Ingest source intent clarified and applied: keep 20 taxi sources and append 3 domain sources (`hr`, `finance`, `marketing`) in `dag_combined_domains/ingest_sources_kafka_domains.json` (23 entries total).
+- **2026-04-01 → 2026-04-15:** Infrastructure and stack direction stabilized on on-prem Spark + YARN + MinIO + Airflow + Iceberg (HadoopCatalog). Hive Metastore approach was dropped.
+- **2026-04-17 → 2026-04-21:** Core taxi pipeline fixes and tuning were applied (schema reconciliation, DAG/Spark settings, script rename to `silver.py`/`gold.py`). Main performance finding: workload is largely I/O/network bound, so config-only tuning gives limited wall-clock improvement.
+- **2026-04-22:** Target architecture aligned to `dtlver3` direction: keep old taxi path stable, build/validate hardening through new combined pipeline (Kafka + registry + error handling).
+- **2026-04-23:** DAG folder organization mostly completed; one known cleanup remained (`silver_histograms_sample.py` still at root).
+- **2026-04-28:** Combined domain pipeline rerun hardening completed.
+- **2026-04-24:** Ingest source intent clarified and applied: keep 20 taxi sources and append 3 domain sources (`hr`, `finance`, `marketing`) in `dag_combined_domains/ingest_sources_kafka_domains.json` (23 entries total).
