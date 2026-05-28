@@ -1,4 +1,6 @@
-from diagrams import Cluster, Diagram
+from pathlib import Path
+
+from diagrams import Cluster, Diagram, Edge
 from diagrams.generic.storage import Storage
 from diagrams.onprem.analytics import Spark, Superset
 from diagrams.onprem.compute import Server
@@ -9,158 +11,118 @@ from diagrams.onprem.queue import Kafka
 from diagrams.onprem.workflow import Airflow
 
 
-graph_attr = {
-    "bgcolor": "#0c1b2a",
-    "pad": "0.35",
-    "nodesep": "0.7",
-    "ranksep": "1.0",
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_FILE = OUTPUT_DIR / "dtlver3_redraw"
+
+GRAPH_ATTR = {
+    "bgcolor": "white",
+    "pad": "0.3",
+    "nodesep": "0.75",
+    "ranksep": "0.9",
     "splines": "ortho",
+}
+
+NODE_ATTR = {
     "fontname": "Helvetica",
-    "fontcolor": "white",
-    "fontsize": "18",
 }
 
-node_attr = {
-    "fontname": "Helvetica",
-    "fontcolor": "white",
-    "fontsize": "12",
+EDGE_ATTR = {
+    "penwidth": "1.6",
 }
 
-edge_attr = {
-    "color": "#e6f4ff",
-    "penwidth": "2.0",
-}
-
-raw_cluster = {
+RAW_CLUSTER = {
     "style": "rounded,filled",
-    "color": "#79b6ff",
-    "fillcolor": "#17344b",
-    "fontcolor": "white",
+    "fillcolor": "#f9d6d5",
+    "color": "#d9534f",
 }
 
-minio_cluster = {
+BRONZE_CLUSTER = {
     "style": "rounded,filled",
-    "color": "#d96653",
-    "fillcolor": "#6a3234",
-    "fontcolor": "white",
+    "fillcolor": "#f3e0c2",
+    "color": "#b57f3f",
 }
 
-bronze_cluster = {
+SILVER_CLUSTER = {
     "style": "rounded,filled",
-    "color": "#d7a65d",
-    "fillcolor": "#6f5826",
-    "fontcolor": "white",
+    "fillcolor": "#eceff3",
+    "color": "#9aa5b1",
 }
 
-silver_cluster = {
+GOLD_CLUSTER = {
     "style": "rounded,filled",
-    "color": "#b9c7d6",
-    "fillcolor": "#6f7d88",
-    "fontcolor": "white",
-}
-
-gold_cluster = {
-    "style": "rounded,filled",
-    "color": "#d8be43",
-    "fillcolor": "#7d7024",
-    "fontcolor": "white",
-}
-
-ai_cluster = {
-    "style": "rounded,dashed,filled",
-    "color": "#d8a9ff",
-    "fillcolor": "#5f438e",
-    "fontcolor": "white",
-}
-
-consume_cluster = {
-    "style": "rounded,filled",
-    "color": "#68c7e8",
-    "fillcolor": "#183f58",
-    "fontcolor": "white",
+    "fillcolor": "#f7efb7",
+    "color": "#c6a700",
 }
 
 
 with Diagram(
-    "DTL v3 Redraw",
-    filename="graphs/dtlver3_redraw",
+    "FoxAI Lakehouse Architecture",
+    filename=str(OUTPUT_FILE),
     show=False,
     direction="LR",
-    graph_attr=graph_attr,
-    node_attr=node_attr,
-    edge_attr=edge_attr,
     outformat="png",
+    graph_attr=GRAPH_ATTR,
+    node_attr=NODE_ATTR,
+    edge_attr=EDGE_ATTR,
 ):
-    with Cluster("1. Data Ingestion (Raw Zone)", graph_attr=raw_cluster):
-        iot = Kafka("IoT Devices\n(Kafka)")
-        web_db = PostgreSQL("Web/App\nDatabases")
+    airflow = Airflow("Airflow\nOrchestration")
 
-    with Cluster("MinIO Object Storage", graph_attr=minio_cluster):
-        minio = Storage("MinIO S3\nBronze Bucket\ns3a://raw-landing/")
+    with Cluster("Source Systems"):
+        iot = Kafka("IoT Devices\nKafka")
+        app_db = PostgreSQL("Web / App\nDatabases")
 
-    airflow = Airflow("Airflow DAG\n(Orchestration)")
+    with Cluster("Raw Zone", graph_attr=RAW_CLUSTER):
+        raw_storage = Storage("MinIO Raw Landing")
 
-    with Cluster("2. Bronze Layer (Ingestion & Metadata)", graph_attr=bronze_cluster):
-        bronze_spark = Spark("Spark + Iceberg")
-        bronze_tables = Storage("Bronze Tables\n(Iceberg/Parquet)")
-        iceberg_rest = Storage("Iceberg REST\nCatalog")
-        bronze_spark >> bronze_tables
-        bronze_tables - iceberg_rest
+    with Cluster("Bronze Layer", graph_attr=BRONZE_CLUSTER):
+        bronze_job = Spark("Spark Ingestion")
+        bronze_tables = Storage("Iceberg Bronze")
 
-    with Cluster("3. Silver Layer (Transformation & Quality)", graph_attr=silver_cluster):
-        silver_spark = Spark("Spark + Iceberg")
-        silver_tables = Storage("Silver Tables\n(Iceberg/Parquet)")
-        iceberg_catalog = Storage("Iceberg\nCatalog")
-        silver_spark >> silver_tables
-        silver_tables - iceberg_catalog
+    with Cluster("Silver Layer", graph_attr=SILVER_CLUSTER):
+        silver_job = Spark("Spark Transform")
+        silver_tables = Storage("Iceberg Silver")
 
-    with Cluster("4. Gold Layer (Aggregation & Insight)", graph_attr=gold_cluster):
-        gold_spark = Spark("Spark + Iceberg")
-        gold_tables = Storage("Gold Tables\n(Iceberg/Parquet)")
-        gold_spark >> gold_tables
+    with Cluster("Gold Layer", graph_attr=GOLD_CLUSTER):
+        gold_job = Spark("Spark Aggregate")
+        gold_tables = Storage("Iceberg Gold")
 
-    with Cluster("AI Intelligence Layer (LangGraph)", graph_attr=ai_cluster):
-        schema_agent = Server("Schema Inference Agent\n(LangGraph)")
-        quality_agent = Server("Data Quality Agent\n(LangGraph)")
-        nlsql_agent = Server("NL-to-SQL Agent\n(LangGraph/Vanna.ai)")
-        semantic_agent = Server("Semantic Inquiry Agent\n(LangGraph)")
-        ai_airflow = Airflow("Apache Airflow")
+    with Cluster("AI Intelligence"):
+        schema_agent = Server("Schema Inference\nAgent")
+        quality_agent = Server("Data Quality\nAgent")
+        semantic_agent = Server("Semantic Inquiry\nAgent")
+        nlsql_agent = Server("NL-to-SQL\nAgent")
 
-        schema_agent >> ai_airflow
-        quality_agent >> ai_airflow
-        nlsql_agent >> ai_airflow
-        semantic_agent >> nlsql_agent
-
-    with Cluster("5. Consumption & Data Science", graph_attr=consume_cluster):
-        relational_db = PostgreSQL("Relational DB\n(PostgreSQL)")
+    with Cluster("Consumption & Data Science"):
+        serving_db = PostgreSQL("Serving DB")
         superset = Superset("Superset")
         grafana = Grafana("Grafana")
-        jupyter = Server("Jupyter Notebooks\n(PySpark)")
+        jupyter = Server("Jupyter\nNotebooks")
         mlflow = Mlflow("MLflow")
-        vector_db = Qdrant("Vector DB\n(Milvus)")
+        vector_db = Qdrant("Vector DB")
 
-    [iot, web_db] >> minio
-    [iot, web_db] >> airflow
+    [iot, app_db] >> raw_storage
+    airflow >> Edge(style="dashed") >> [bronze_job, silver_job, gold_job]
 
-    minio >> bronze_spark
-    airflow >> bronze_spark
+    raw_storage >> bronze_job >> bronze_tables >> silver_job >> silver_tables >> gold_job >> gold_tables
+
     bronze_tables >> schema_agent
-    schema_agent >> iceberg_rest
-
-    bronze_tables >> silver_spark
-    airflow >> silver_spark
-    iceberg_catalog >> quality_agent
-    quality_agent >> silver_spark
-
-    silver_tables >> gold_spark
-    airflow >> gold_spark
-    silver_tables >> nlsql_agent
-    gold_tables >> nlsql_agent
+    silver_tables >> quality_agent
     gold_tables >> semantic_agent
+    [silver_tables, gold_tables] >> nlsql_agent
+    semantic_agent >> nlsql_agent
 
-    gold_tables >> relational_db
-    gold_tables >> superset
-    gold_tables >> grafana
-    silver_tables >> jupyter
-    silver_tables >> mlflow
+    gold_tables >> serving_db >> [superset, grafana]
     gold_tables >> vector_db
+    [silver_tables, gold_tables] >> jupyter
+    [silver_tables, gold_tables] >> mlflow
+
+    schema_agent >> Edge(style="invis") >> quality_agent
+    quality_agent >> Edge(style="invis") >> semantic_agent
+    semantic_agent >> Edge(style="invis") >> nlsql_agent
+    serving_db >> Edge(style="invis") >> superset
+    superset >> Edge(style="invis") >> grafana
+    grafana >> Edge(style="invis") >> jupyter
+    jupyter >> Edge(style="invis") >> mlflow
+    mlflow >> Edge(style="invis") >> vector_db
