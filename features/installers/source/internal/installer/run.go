@@ -24,14 +24,16 @@ func Main() {
 	fatal(err)
 
 	user := strings.TrimSpace(mustOutput("whoami"))
+	group := strings.TrimSpace(mustOutput("id", "-gn"))
 	inst := &installer{
-		mode:        mode,
-		reader:      bufio.NewReader(os.Stdin),
-		currentUser: user,
-		baseHome:    filepath.Join("/home", user),
-		hadoopHome:  filepath.Join("/home", user, "hadoop"),
-		sparkHome:   "/opt/spark",
-		java11Home:  pinnedJava11Home,
+		mode:         mode,
+		reader:       bufio.NewReader(os.Stdin),
+		currentUser:  user,
+		currentGroup: group,
+		baseHome:     filepath.Join("/home", user),
+		hadoopHome:   filepath.Join("/home", user, "hadoop"),
+		sparkHome:    "/opt/spark",
+		java11Home:   pinnedJava11Home,
 	}
 
 	runErr := inst.execute()
@@ -358,6 +360,17 @@ func (i *installer) finishAndRecommend() error {
 
 	rec := deriveRecommendations(specs)
 	i.printRecommendationSummary(specs, rec)
+	openReadme, err := i.promptYesNoDefault("Open the add-on template README now", "no")
+	if err != nil {
+		return err
+	}
+	if openReadme {
+		if err := i.printAddonTemplateReadme(); err != nil {
+			return err
+		}
+	}
+	fmt.Println()
+	fmt.Println("Setup complete.")
 	return nil
 }
 

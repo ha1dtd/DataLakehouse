@@ -808,7 +808,7 @@ Known environment note from live testing:
 
 **Mode:** Refactor
 
-**Current Phase:** Active as of 2026-05-28. The add-on feature moved from loose planning into an approved product-grade contract plus on-disk scaffold work:
+**Current Phase:** Active as of 2026-05-28. The add-on feature moved from loose planning into an approved product-grade contract plus on-disk scaffold work. The first installer-side add-on runtime preparation step is now implemented in the active Linux installer source:
 - packaging is now treated as on hold for the current `x86_64 Linux` baseline
 - add-on direction is approved as a real customer product feature, not a lab/plugin experiment
 - the contract now treats add-ons as prepared versioned packages, not interactive script-entry flows
@@ -838,20 +838,39 @@ Known environment note from live testing:
     - `inpatient_summary`
     - `bed_occupancy`
     - `clinical_pathway`
+- the active installer source now prepares the add-on runtime base directories during mutating NameNode flows:
+  - `/opt/lakehouse/addons/`
+  - `/etc/lakehouse/addons/installed/`
+  - `/etc/lakehouse/addons/enabled/`
+  - `/etc/lakehouse/addons/config/`
+  - `/home/<user>/airflow/dags/addons/`
+- the active installer source now also stages an installer-owned template library under:
+  - `/opt/lakehouse/addons/templates/`
+  - shipped contents:
+    - `README.md`
+    - `starter_addon/`
+- the active installer source now also stages a customer-visible template copy under:
+  - `/home/<user>/airflow/dags/addons/templates/`
+  - with `/home/<user>/airflow/dags/addons/.airflowignore` containing `templates`
+  - purpose:
+    - customer can browse the examples from the Airflow add-on area
+    - Airflow should ignore the template folder instead of treating it as enabled DAGs
+- current local build verification for this step:
+  - `GOOS=linux GOARCH=amd64 go build -o ../../../builds/installer .` from `features/installers/source`
+  - resulting artifact: `builds/installer`
 
 **Next Exact Step:**
-1. define the runtime-side add-on structure under `features/add-on/source/` beyond the package example:
+1. define the runtime-side add-on structure under `features/add-on/source/` beyond the package examples:
    - manifest/schema area
    - registry model
    - install/enable/disable/status/remove/rollback behavior
-2. define the exact runtime-owned server paths and ownership rules that match the approved contract:
+2. document the exact runtime-owned server paths and ownership rules now that the first installer prep step exists:
    - `/opt/lakehouse/addons/...`
    - `/etc/lakehouse/addons/...`
-   - `/home/ubuntu/airflow/dags/addons/...`
+   - `/home/<user>/airflow/dags/addons/...`
 3. decide and document the first Airflow exposure mechanism for enabled add-ons:
    - preferred current direction: symlink enabled DAGs into the managed Airflow add-on DAG path
-4. identify the exact installer delta required so the installer prepares the add-on runtime directories and permissions without yet deploying customer packages
-5. only after the runtime contract is written clearly:
+4. only after the runtime contract is written clearly:
    - begin turning `hdos_widget_addon` from scaffold into a real runnable add-on package
 
 **Files In Scope**
@@ -885,6 +904,43 @@ Known environment note from live testing:
     - `sql/README.md`
     - `services/README.md`
 
+- `features/installers/source/internal/installer/addon_runtime.go`
+  - status: updated | verified: local build
+  - new NameNode-side runtime preparation step for add-on base directories and the managed Airflow add-on DAG path
+  - currently creates:
+    - `/opt/lakehouse/addons/`
+    - `/etc/lakehouse/addons/installed/`
+    - `/etc/lakehouse/addons/enabled/`
+    - `/etc/lakehouse/addons/config/`
+    - `/home/<user>/airflow/dags/addons/`
+
+- `features/installers/source/internal/installer/addon_templates.go`
+  - status: updated | verified: local build
+  - installer-side template library staging logic
+  - syncs embedded example packages and authoring README into:
+    - `/opt/lakehouse/addons/templates/`
+    - `/home/<user>/airflow/dags/addons/templates/`
+  - writes `/home/<user>/airflow/dags/addons/.airflowignore` with `templates`
+
+- `features/installers/source/internal/installer/assets/addon_templates/`
+  - status: updated | verified: local build
+  - embedded installer-owned template assets
+  - currently includes:
+    - `README.md`
+    - `starter_addon/`
+
+- `features/installers/source/internal/installer/install_namenode.go`
+  - status: updated | verified: local build
+  - fresh install flow now calls the add-on runtime preparation step during NameNode setup
+
+- `features/installers/source/internal/installer/bootstrap.go`
+  - status: updated | verified: local build
+  - repair/reconcile local bootstrap flow now also calls the add-on runtime preparation step
+
+- `builds/installer`
+  - status: updated | verified: local build
+  - current Linux x86_64 installer artifact built from `features/installers/source`
+
 **Current On-Disk Truth**
 
 - `features/add-on/` now exists and is the active product area for this feature.
@@ -897,17 +953,23 @@ Known environment note from live testing:
   - controlled dependency policy
   - later global licensing insertion
 - `features/add-on/source/hdos_widget_addon/` is the first example package scaffold.
+- The active installer source now includes the first add-on runtime preparation step on the NameNode side.
+- The active installer source now also stages:
+  - an installer-owned customer handoff library under `/opt/lakehouse/addons/templates/`
+  - a customer-visible Airflow-side template copy under `/home/<user>/airflow/dags/addons/templates/`
 - The scaffold is intentionally not runnable yet:
   - DAG and job files are placeholders
   - no add-on runtime commands exist yet
   - no schema validator exists yet
   - no install/enable/disable/rollback implementation exists yet
-- No installer preparation step exists yet for:
-  - `/opt/lakehouse/addons/`
-  - `/etc/lakehouse/addons/installed/`
-  - `/etc/lakehouse/addons/enabled/`
-  - `/etc/lakehouse/addons/config/`
-  - `/home/ubuntu/airflow/dags/addons/`
+- Installer preparation now exists for:
+  - base add-on runtime directories
+  - installer-owned example/template package staging
+- Installer still does not:
+  - deploy customer packages into installed/enabled registries
+  - validate manifests
+  - expose enabled DAGs yet
+  - implement registry logic yet
 - No Airflow exposure mechanism exists yet for enabled add-ons.
 
 **Risks**
@@ -928,13 +990,41 @@ Known environment note from live testing:
 
 **Mode:** Refactor
 
-**Current Phase:** `hdos_sample` remains deployed to namenode and runtime-validated by the user on 2026-05-21. The separate widget-focused DAG `hdos_widget` is also deployed to namenode on 2026-05-21, registered in Airflow, and user-confirmed working.
+**Current Phase:** `hdos_sample` remains deployed to namenode and runtime-validated by the user on 2026-05-21. The separate widget-focused DAG `hdos_widget` was also deployed to namenode on 2026-05-21, registered in Airflow, and user-confirmed working. On 2026-05-28 the source tree was extended with:
+- a new post-Gold JSON export stage so the widget pipeline can materialize an FE-facing dashboard payload from Gold into MinIO without changing the existing medallion tables
+- a thin read-only API adapter under `dags/hdos_widget/api/` that can serve that snapshot as `GET /api/screen/dashboard`
+
+Those additions were then pushed to the NameNode. User has since started the API service and confirmed that the initial exported dashboard JSON is reachable. The current working direction is now the FE-layout contract:
+- `gold_to_json.py` has been extended to write both:
+  - `dashboard.json`
+  - `dashboard_fe.json`
+- the API source has been remapped so:
+  - `GET /api/screen/dashboard`
+  - should serve `dashboard_fe.json`
+
+The remaining gap is runtime confirmation after those latest source changes: rerun the export task, confirm `dashboard_fe.json` exists in MinIO, restart the API, and validate that `/api/screen/dashboard` now returns the FE-layout JSON.
+
+On 2026-05-29 the local source tree was extended again with a separate RabbitMQ publish step after `gold_to_json`:
+- a new `publish_dashboard_fe_event` DAG task
+- a new `publish_snapshot_event.py` runtime script
+- a queue-based handoff contract so BE can consume the latest `dashboard_fe` snapshot without reading Airflow internals directly
 
 **Next Exact Step:**
-1. Replay one Gold task by clearing only that task, confirming other Gold task outputs are untouched
-2. Decide whether to keep the current single parameterized Gold script or split it into separate physical Gold files for operational clarity
-3. Treat `Xe cấp cứu 115` / `Xe 115 hoạt động` and exact population-health registry parity as separate discovery tasks, because exact populated source tables are still unconfirmed or empty in the current demo database
-4. If JDBC/Spark later fails on PostgreSQL-native columns in broader runs (especially `bytea` / `tsvector`), patch the relevant configured source query with compatibility casts
+1. Rerun the `hdos_widget` flow from `gold_to_json` onward
+2. Confirm MinIO contains both:
+   - `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard.json`
+   - `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard_fe.json`
+3. Confirm the final DAG task `publish_dashboard_fe_event` succeeds
+4. Verify the BE RabbitMQ queue receives the new `screen_snapshot_ready` event for:
+   - `screen_id=dashboard`
+   - `object_id=dashboard_fe`
+5. Restart the NameNode API service under `/home/ubuntu/daihai_script/hdos_widget/api/`
+6. Validate:
+   - `GET /health`
+   - `GET /api/screen/dashboard`
+   - response shape is the FE-layout contract (`dashboard -> tabs -> widgets`)
+7. Hand the API endpoint and the RabbitMQ queue contract to FE/BE after the above validation
+8. Keep `Xe cấp cứu 115` / `Xe 115 hoạt động` and exact population-health registry parity as separate discovery tasks unless the FE contract proves they are required in this screen immediately
 
 **Files In Scope**
 
@@ -1003,9 +1093,31 @@ Known environment note from live testing:
       - `gold_inpatient_summary`
       - `gold_bed_occupancy`
       - `gold_clinical_pathway`
+    - new local-only post-Gold task on 2026-05-28:
+      - `gold_to_json`
+      - wired after all five Gold tasks
+      - exports one FE-facing dashboard JSON snapshot to MinIO
+    - new local + NameNode-synced task on 2026-05-29:
+      - `publish_dashboard_fe_event`
+      - wired after `gold_to_json`
+      - publishes a RabbitMQ `screen_snapshot_ready` event with:
+        - `artifact_uri`
+        - bucket/key metadata
+        - inline `dashboard_fe` payload
   - deployed remote paths:
     - runtime: `/home/ubuntu/daihai_script/hdos_widget/`
     - DAG: `/home/ubuntu/airflow/dags/hdos_widget.py`
+  - current local-only JSON export files on 2026-05-28:
+    - `dags/hdos_widget/gold_to_json.py`
+    - `dags/hdos_widget/hdos_widget_config.py`
+    - `dags/hdos_widget/hdos_widget_config.json`
+    - `dags/hdos_widget/hdos_widget.py`
+    - `dags/hdos_widget/publish_snapshot_event.py`
+  - current local-only API adapter files on 2026-05-28:
+    - `dags/hdos_widget/api/app.py`
+    - `dags/hdos_widget/api/config.py`
+    - `dags/hdos_widget/api/requirements.txt`
+    - `dags/hdos_widget/api/README.md`
 
 **Current On-Disk Truth**
 
@@ -1062,6 +1174,111 @@ Known environment note from live testing:
   - local checks passed:
     - `python3 -m py_compile dags/hdos_widget/*.py`
     - `python3 -m json.tool dags/hdos_widget/hdos_widget_config.json`
+- Local JSON export refactor on 2026-05-28:
+  - added `dags/hdos_widget/gold_to_json.py`
+    - reads the existing five Gold tables only
+    - does not mutate any existing Gold output
+    - builds one screen-level dashboard payload shaped for the FE `GET /api/screen/dashboard` contract
+    - intentionally omits `sse` fields for now so FE is not pointed at an unimplemented live endpoint
+    - writes one deterministic snapshot object by overwrite to:
+      - `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard.json`
+  - updated `dags/hdos_widget/hdos_widget.py`
+    - added final task:
+      - `gold_to_json`
+    - wiring is now:
+      - `postgres_to_raw >> raw_to_bronze >> bronze_to_silver >> [five Gold tasks] >> gold_to_json`
+  - updated `dags/hdos_widget/hdos_widget_config.json`
+    - added:
+      - `JSON_EXPORT_BASE`
+  - updated `dags/hdos_widget/hdos_widget_config.py`
+    - now exposes:
+      - `JSON_EXPORT_BASE`
+  - local validation passed:
+    - `python -m py_compile dags/hdos_widget/hdos_widget.py dags/hdos_widget/hdos_widget_config.py dags/hdos_widget/gold_to_json.py dags/hdos_widget/silver_to_gold.py dags/hdos_widget/bronze_to_silver.py`
+  - later remote/runtime status:
+    - pushed to the NameNode runtime path
+    - initial `gold_to_json` runtime produced `dashboard.json` in MinIO
+    - user observed the initial exported JSON object and noted it was compact, which is expected for a presentation-layer snapshot
+- Local API adapter creation on 2026-05-28:
+  - added `dags/hdos_widget/api/app.py`
+    - exposes:
+      - `GET /health`
+      - `GET /api/screen/{screen_id}`
+    - current intended FE route:
+      - `GET /api/screen/dashboard`
+    - reads the latest dashboard snapshot from MinIO with `boto3`
+    - returns `404` for missing snapshot and `502/503` for storage or payload errors
+  - added `dags/hdos_widget/api/config.py`
+    - loads defaults from `dags/hdos_widget/hdos_widget_config.json`
+    - supports env override for MinIO endpoint, credentials, bucket, and prefix
+  - added `dags/hdos_widget/api/requirements.txt`
+    - `fastapi`
+    - `uvicorn`
+    - `boto3`
+  - added `dags/hdos_widget/api/README.md`
+    - install, run, config, and curl test instructions
+  - local validation passed:
+    - `python -m py_compile dags/hdos_widget/api/app.py dags/hdos_widget/api/config.py`
+  - later remote/runtime status:
+    - pushed to the NameNode runtime path
+    - user started the API service on the NameNode
+    - initial API runtime is user-confirmed as started
+- Local RabbitMQ publish-step refactor on 2026-05-29:
+  - added `dags/hdos_widget/publish_snapshot_event.py`
+    - reads `dashboard_fe.json` from MinIO
+    - builds a `screen_snapshot_ready` event envelope
+    - publishes to RabbitMQ queue:
+      - `be.hdos.dashboard.fe.ready`
+    - includes both:
+      - `artifact_uri`
+      - inline `payload`
+  - updated `dags/hdos_widget/hdos_widget.py`
+    - added final task:
+      - `publish_dashboard_fe_event`
+    - wiring is now:
+      - `postgres_to_raw >> raw_to_bronze >> bronze_to_silver >> [five Gold tasks] >> gold_to_json >> publish_dashboard_fe_event`
+  - updated `dags/hdos_widget/hdos_widget_config.json`
+    - added:
+      - `PUBLISH_PYTHON_BIN`
+      - `RABBITMQ_HOST`
+      - `RABBITMQ_PORT`
+      - `RABBITMQ_VHOST`
+      - `RABBITMQ_USER`
+      - `RABBITMQ_PASS`
+      - `RABBITMQ_QUEUE`
+  - updated `dags/hdos_widget/hdos_widget_config.py`
+    - now exposes the RabbitMQ and publish-python constants
+  - updated `dags/hdos_widget/api/requirements.txt`
+    - added:
+      - `pika`
+  - local validation passed:
+    - `python -m py_compile dags/hdos_widget/hdos_widget.py dags/hdos_widget/hdos_widget_config.py dags/hdos_widget/publish_snapshot_event.py`
+  - NameNode sync + environment progress:
+    - updated DAG/runtime files pushed to the NameNode
+    - Airflow still lists `hdos_widget`
+    - `pika` installed into `/home/ubuntu/daihai_script/hdos_widget/api/.venv`
+  - still pending runtime validation:
+    - rerun after `dashboard_fe.json` exists
+    - confirm queue message arrival
+- NameNode deployment checkpoint on 2026-05-28:
+  - runtime files synced to:
+    - `/home/ubuntu/daihai_script/hdos_widget/`
+  - API files synced to:
+    - `/home/ubuntu/daihai_script/hdos_widget/api/`
+  - DAG synced to:
+    - `/home/ubuntu/airflow/dags/hdos_widget.py`
+  - Airflow registration check passed:
+    - `/home/ubuntu/airflow-venv/bin/airflow dags list | grep hdos_widget`
+  - cleaned accidental bytecode cache from the API runtime path after deploy
+  - later progress after deployment:
+    - API source mapping was updated so `/api/screen/dashboard` should resolve to `dashboard_fe.json`
+    - updated `gold_to_json.py` was pushed again to the NameNode so the next run should emit both `dashboard.json` and `dashboard_fe.json`
+    - updated `publish_snapshot_event.py`, widget config, DAG wiring, and API requirements were pushed to the NameNode
+  - still pending after the latest source update:
+    - rerun `gold_to_json` after the `dashboard_fe.json` exporter change
+    - confirm `publish_dashboard_fe_event` succeeds after `gold_to_json`
+    - restart the API service after the `/api/screen/dashboard` mapping change
+    - confirm live endpoint returns the FE-layout JSON
 - Deployment verification for `hdos_widget`:
   - runtime files pushed to `/home/ubuntu/daihai_script/hdos_widget/`
   - DAG pushed to `/home/ubuntu/airflow/dags/hdos_widget.py`
@@ -1081,6 +1298,7 @@ Known environment note from live testing:
 - PostgreSQL-native `bytea` and `tsvector` fields may still require explicit cast/encoding logic at raw ingest time if Spark JDBC or Iceberg rejects them at runtime.
 - Bronze currently preserves the full wide table but does not yet add table-specific canonical casting beyond what JDBC already provides.
 - Gold outputs are first-pass marts based on source context and sample profiling; they may need adjustment after user review or richer hospital-table joins.
+- The new dashboard JSON export and API adapter currently cover the FE screen through a snapshot contract only; any true realtime/SSE layer is still separate follow-up work.
 
 ---
 
@@ -1374,3 +1592,14 @@ Known environment note from live testing:
 2026-05-25T00:55:00Z — Replaced the placeholder `graphs/diagram.py` example with a real DTL v3 redraw script written in the normal `diagrams`/Graphviz style: direct node imports, `Diagram(...)`, `Cluster(...)`, and `>>` / `-` edges. The script now uses official `diagrams.onprem.*` nodes where available (`Kafka`, `PostgreSQL`, `Spark`, `Airflow`, `Superset`, `Grafana`, `Mlflow`, `Qdrant`) and `diagrams.generic.storage.Storage` for MinIO/Iceberg-style storage blocks. Verification: `python3 graphs/diagram.py` passed and generated `graphs/output/dtlver3_redraw.png`. The original sample output `graphs/web_service.png` remains present as the library example artifact.
 2026-05-28T03:00:00Z — Synced repo memory after the Lakehouse rename and layout overhaul. Updated `md/project.md`, `md/logs.md`, `md/progress.md`, `md/rule.md`, both agent files, and the active installer docs under `features/installers/source/md/` so the repo now points to `md/`, `features/installers/source/`, `features/installers/script/`, `builds/foxai-installer-linux-amd64`, `features/add-on/`, and `features/licensing/` as the current structure.
 2026-05-28T04:57:55Z — Re-read `md/rule.md` and updated task memory for the approved feature shift. Packaging (Task 4) is now explicitly on hold after the accepted `x86_64 Linux` baseline, and a new active Task 5 now tracks the add-on runtime contract and package model. Recorded the approved product-grade contract at `features/add-on/md/contract.md` and the current first widget-oriented example scaffold at `features/add-on/source/hdos_widget_addon/`.
+2026-05-28T06:53:23Z — Implemented the first installer-side add-on runtime preparation step in the active Linux installer source. Added `features/installers/source/internal/installer/addon_runtime.go`, wired it into fresh install and repair/reconcile NameNode bootstrap paths, and verified a Linux x86_64 build at `builds/installer`. Current scope is directory preparation only: `/opt/lakehouse/addons/`, `/etc/lakehouse/addons/{installed,enabled,config}`, and `/home/<user>/airflow/dags/addons/`.
+2026-05-28T07:19:14Z — Extended the installer-side add-on handoff step beyond bare directory creation. Added embedded template-library staging in `features/installers/source/internal/installer/addon_templates.go` plus installer-owned assets under `features/installers/source/internal/installer/assets/addon_templates/`. The installer now syncs `/opt/lakehouse/addons/templates/README.md` and the shipped template packages after preparing the add-on runtime base paths. Rebuilt and locally verified the Linux x86_64 artifact at `builds/installer`.
+2026-05-28T07:28:31Z — Adjusted installer add-on template staging after runtime feedback from the NameNode. Added an explicit installer step log for template staging and now sync a customer-visible copy into `/home/<user>/airflow/dags/addons/templates/` in addition to `/opt/lakehouse/addons/templates/`. Wrote `/home/<user>/airflow/dags/addons/.airflowignore` containing `templates` so Airflow ignores the template folder instead of treating it as enabled DAGs. Rebuilt and locally verified `builds/installer`.
+2026-05-28T07:31:45Z — Replaced the installer-shipped business-specific `hdos_widget_addon` example with a single generic template package that still mirrors the real Lakehouse medallion DAG structure. The installer-owned template library now ships only `starter_addon/`, with one DAG entrypoint, four staged jobs (`postgres_to_raw`, `raw_to_bronze`, `bronze_to_silver`, `silver_to_gold`), and structured `defaults.yaml`, `sources.yaml`, and `topics.yaml` config files. Rebuilt and locally verified `builds/installer`.
+2026-05-28T07:41:13Z — Added the final customer handoff prompt to the installer end flow. After the Spark recommendation block, the installer now asks whether to open the add-on template README from `~/airflow/dags/addons/templates/README.md`; if the user answers yes, it prints the file inline, and if the user answers no, it prints `Setup complete.` Rebuilt and locally verified `builds/installer`.
+2026-05-28T15:14:44Z — Added a new local-only `hdos_widget` post-Gold export stage for the frontend JSON contract. Created `dags/hdos_widget/gold_to_json.py`, added `JSON_EXPORT_BASE` to the widget config, and wired a final `gold_to_json` Airflow task after the five Gold tasks. The new job reads the existing Gold marts, builds one FE-facing `GET /api/screen/dashboard` payload, and overwrites a deterministic MinIO snapshot at `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard.json`. Local syntax validation passed with `python -m py_compile`; remote deploy, Airflow runtime validation, and the thin HTTP adapter are still pending.
+2026-05-28T15:49:09Z — Added the first thin read-only API adapter for `hdos_widget` under `dags/hdos_widget/api/`. Created `app.py`, `config.py`, `requirements.txt`, and `README.md`. The service reads the MinIO dashboard snapshot written by `gold_to_json.py` and exposes `GET /health` plus `GET /api/screen/{screen_id}` with `dashboard` as the first intended screen id. Local syntax validation passed with `python -m py_compile`; dependency install, runtime deploy, and live endpoint validation are still pending.
+2026-05-28T15:52:29Z — Deployed the updated `hdos_widget` runtime and DAG to the NameNode. Synced the runtime files to `/home/ubuntu/daihai_script/hdos_widget/`, synced the API adapter to `/home/ubuntu/daihai_script/hdos_widget/api/`, synced the DAG to `/home/ubuntu/airflow/dags/hdos_widget.py`, and confirmed Airflow still registers `hdos_widget`. Removed accidental `__pycache__` from the API runtime path after deploy. Remaining work is NameNode-side dependency install, API process start, and live endpoint validation.
+2026-05-28T16:44:28Z — Extended `gold_to_json.py` to export a second FE-layout snapshot without breaking the original hydrated payload file. The job now writes both `dashboard.json` and `dashboard_fe.json` under `s3a://gold/lakehouse/serving/hdos_widget/screen/`. `dashboard_fe.json` follows the newer widget-layout contract shape (`dashboard -> tabs -> widgets`) and was pushed to the NameNode runtime path at `/home/ubuntu/daihai_script/hdos_widget/gold_to_json.py`. Next validation is to rerun `gold_to_json` and confirm both objects are present in MinIO.
+2026-05-29T00:00:00Z — Synced task memory after the first NameNode-side API bring-up and FE contract clarification. User confirmed the thin API service was able to run and the initial exported dashboard JSON existed in MinIO. The active contract then shifted to the FE widget-layout shape, so task memory now treats the exact next runtime step as: rerun `gold_to_json` to emit `dashboard_fe.json`, restart the API after the `/api/screen/dashboard -> dashboard_fe.json` mapping change, and validate that `/api/screen/dashboard` returns the FE-layout JSON.
+2026-05-29T13:33:30Z — Added a BE-facing RabbitMQ handoff step after `gold_to_json`. Created `dags/hdos_widget/publish_snapshot_event.py`, wired new DAG task `publish_dashboard_fe_event` after `gold_to_json`, added RabbitMQ and `PUBLISH_PYTHON_BIN` config keys, and extended the shared NameNode API/publisher venv with `pika`. Updated DAG/runtime files were pushed to the NameNode and Airflow still lists `hdos_widget`. The remaining runtime check is to rerun the flow, confirm `dashboard_fe.json` exists, and verify the queue `be.hdos.dashboard.fe.ready` receives the `screen_snapshot_ready` event.

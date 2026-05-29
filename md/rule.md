@@ -42,6 +42,29 @@
 - Inspect the whole flow before patching multi-component behavior.
 - Never claim fixed without a real verification path.
 - After edits, check for editor errors.
+- Unless the user explicitly says prototype / lab / spike / demo, treat all code, contracts, architecture, and plans as production-grade customer-facing work.
+
+---
+
+## Production Standard Rule
+
+- Default assumption: this project is building a deployable, hardened, real-customer product — not a lab exercise.
+- All proposed code, contracts, folder structures, runtime models, and implementation plans must follow real-world operational standards first, then be tailored to the current Lakehouse stack.
+- Prefer patterns that support:
+  - clear ownership boundaries
+  - versioning
+  - validation before activation
+  - rollback
+  - auditability
+  - security and secret separation
+  - operationally predictable paths and permissions
+- Do not propose lab-style defaults as product architecture, including:
+  - ad hoc manual edits in live runtime paths
+  - desktop or convenience-user paths as product-owned runtime locations
+  - arbitrary dependency installation without control
+  - direct mutation of platform-owned files by extensions
+  - interactive “paste your script here” workflows as the default deployment model
+- If a temporary prototype approach is suggested for learning or speed, label it explicitly as `prototype-only` and explain the gap between that shortcut and the production-grade version.
 
 ---
 

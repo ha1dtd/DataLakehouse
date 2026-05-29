@@ -13,6 +13,7 @@ from hdos_widget_config import (
     MINIO_ACCESS_KEY,
     MINIO_ENDPOINT,
     MINIO_SECRET_KEY,
+    PUBLISH_PYTHON_BIN,
     RAW_WAREHOUSE,
     SCRIPT_BASE,
     SILVER_WAREHOUSE,
@@ -77,6 +78,8 @@ RAW_SCRIPT = f"{SCRIPT_BASE}/postgres_to_raw.py"
 BRONZE_SCRIPT = f"{SCRIPT_BASE}/raw_to_bronze.py"
 SILVER_SCRIPT = f"{SCRIPT_BASE}/bronze_to_silver.py"
 GOLD_SCRIPT = f"{SCRIPT_BASE}/silver_to_gold.py"
+JSON_SCRIPT = f"{SCRIPT_BASE}/gold_to_json.py"
+PUBLISH_SCRIPT = f"{SCRIPT_BASE}/publish_snapshot_event.py"
 CONFIG_FILE = f"{SCRIPT_BASE}/hdos_widget_config.json"
 
 
@@ -151,4 +154,22 @@ with DAG(
         )
         gold_tasks.append(gold_task)
 
-    postgres_to_raw >> raw_to_bronze >> bronze_to_silver >> gold_tasks
+    gold_to_json = BashOperator(
+        task_id="gold_to_json",
+        bash_command=spark_submit_command(
+            JSON_SCRIPT,
+            f" --conf spark.sql.catalog.gold_catalog=org.apache.iceberg.spark.SparkCatalog "
+            f"--conf spark.sql.catalog.gold_catalog.type=hadoop "
+            f"--conf spark.sql.catalog.gold_catalog.warehouse={GOLD_WAREHOUSE}",
+        ),
+    )
+
+    publish_dashboard_fe_event = BashOperator(
+        task_id="publish_dashboard_fe_event",
+        bash_command=(
+            f"export FOXAI_CONFIG_FILE={CONFIG_FILE} && "
+            f"{PUBLISH_PYTHON_BIN} {PUBLISH_SCRIPT} --screen-id dashboard --object-id dashboard_fe"
+        ),
+    )
+
+    postgres_to_raw >> raw_to_bronze >> bronze_to_silver >> gold_tasks >> gold_to_json >> publish_dashboard_fe_event

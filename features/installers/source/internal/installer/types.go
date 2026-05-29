@@ -34,6 +34,7 @@ type installer struct {
 	mode                         installerMode
 	reader                       *bufio.Reader
 	currentUser                  string
+	currentGroup                 string
 	baseHome                     string
 	hadoopHome                   string
 	sparkHome                    string

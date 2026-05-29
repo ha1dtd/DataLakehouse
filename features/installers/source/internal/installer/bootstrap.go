@@ -60,6 +60,9 @@ func (i *installer) runLocalBootstrapWithoutFreshGuard() error {
 	if err := i.ensureSpark(); err != nil {
 		return err
 	}
+	if err := i.ensureAddonRuntime(); err != nil {
+		return err
+	}
 	if err := i.ensureBashrc(); err != nil {
 		return err
 	}

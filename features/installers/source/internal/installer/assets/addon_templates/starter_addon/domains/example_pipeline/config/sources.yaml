@@ -1,0 +1,5 @@
+sources:
+  - name: source_table_a
+    primary_key: source_id
+  - name: source_table_b
+    primary_key: source_id

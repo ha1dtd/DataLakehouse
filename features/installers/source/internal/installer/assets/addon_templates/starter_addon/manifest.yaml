@@ -1,0 +1,46 @@
+id: starter-addon
+name: Starter Add-on
+version: 0.1.0
+type: pipeline-addon
+owner: customer
+min_platform_version: 1.0.0
+
+domains:
+  - name: example_pipeline
+    dags_path: domains/example_pipeline/dags
+    jobs_path: domains/example_pipeline/jobs
+    config_path: domains/example_pipeline/config
+    sql_path: domains/example_pipeline/sql
+    services_path: domains/example_pipeline/services
+
+entry_dags:
+  - starter_pipeline
+
+config_files:
+  - domains/example_pipeline/config/defaults.yaml
+  - domains/example_pipeline/config/sources.yaml
+  - domains/example_pipeline/config/topics.yaml
+
+required_env:
+  - JAVA_HOME
+  - HADOOP_HOME
+  - SPARK_HOME
+
+required_connections:
+  - source_system
+  - lakehouse_minio
+
+required_packages:
+  python: []
+  os: []
+
+target_namespaces:
+  iceberg:
+    - raw_catalog.example_pipeline
+    - bronze_catalog.example_pipeline
+    - silver_catalog.example_pipeline
+    - gold_catalog.example_pipeline
+
+shared_output_policy:
+  allow: false
+  operator_confirmation_required: true

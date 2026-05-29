@@ -2,6 +2,54 @@
 
 These are older project/session log entries kept for reference.
 
+- **2026-05-29:** `hdos_widget` serving bridge progressed from export-only to FE-facing API handoff:
+  - the `hdos_widget` runtime and API files had already been pushed to the NameNode under:
+    - `/home/ubuntu/daihai_script/hdos_widget/`
+    - `/home/ubuntu/daihai_script/hdos_widget/api/`
+    - DAG: `/home/ubuntu/airflow/dags/hdos_widget.py`
+  - user started the thin API service on the NameNode and confirmed it ran
+  - initial MinIO export produced a compact presentation-layer snapshot:
+    - `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard.json`
+    - user observed that the object was small; this was clarified as expected because it stores final widget-ready summaries, not full Gold-table rows
+  - frontend contract clarification changed the target shape:
+    - FE expects a widget-layout structure under `dashboard -> tabs -> widgets`
+    - not the earlier direct hydrated component payload shape
+  - `dags/hdos_widget/gold_to_json.py` was then extended to write a second object:
+    - `s3a://gold/lakehouse/serving/hdos_widget/screen/dashboard_fe.json`
+  - `dags/hdos_widget/api/app.py` was updated so:
+    - `GET /api/screen/dashboard`
+    - should resolve to `dashboard_fe.json`
+  - those updated source files were pushed to the NameNode
+  - current exact remaining runtime step:
+    - rerun `gold_to_json`
+    - confirm both `dashboard.json` and `dashboard_fe.json` exist in MinIO
+    - restart the API
+    - confirm `/api/screen/dashboard` returns the FE-layout JSON
+
+- **2026-05-29:** Added BE-facing RabbitMQ publish step to `hdos_widget`:
+  - new runtime script:
+    - `dags/hdos_widget/publish_snapshot_event.py`
+  - new DAG task:
+    - `publish_dashboard_fe_event`
+  - task is wired after `gold_to_json`
+  - message contract:
+    - event type: `screen_snapshot_ready`
+    - screen id: `dashboard`
+    - object id / format: `dashboard_fe`
+    - queue: `be.hdos.dashboard.fe.ready`
+    - includes both MinIO reference metadata and the inline `dashboard_fe` payload
+  - config additions were made in `dags/hdos_widget/hdos_widget_config.json` / `.py` for:
+    - `PUBLISH_PYTHON_BIN`
+    - RabbitMQ host/port/vhost/user/pass/queue
+  - shared NameNode API/publisher venv requirements were extended with:
+    - `pika==1.3.2`
+  - files were pushed to the NameNode, Airflow still lists `hdos_widget`, and `pika` was installed into `/home/ubuntu/daihai_script/hdos_widget/api/.venv`
+  - remaining validation:
+    - rerun `gold_to_json`
+    - confirm `dashboard_fe.json` exists
+    - confirm `publish_dashboard_fe_event` succeeds
+    - confirm BE queue receives the event
+
 - **2026-05-28:** Repo/layout overhaul checkpoint:
   - repo root renamed from `FoxAI` to `Lakehouse`
   - project memory files moved from `markdown/` to `md/`

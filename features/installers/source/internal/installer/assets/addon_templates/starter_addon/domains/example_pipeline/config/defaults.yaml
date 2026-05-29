@@ -1,0 +1,13 @@
+addon:
+  id: starter-addon
+  domain: example_pipeline
+
+runtime:
+  schedule: null
+  spark_profile: standard
+
+outputs:
+  raw_namespace: raw_catalog.example_pipeline
+  bronze_namespace: bronze_catalog.example_pipeline
+  silver_namespace: silver_catalog.example_pipeline
+  gold_namespace: gold_catalog.example_pipeline
